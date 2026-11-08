@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+/* Mengembalikan garis tabel yang dihapus oleh Tailwind */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+}
+th, td {
+  border: 1px solid #9ca3af !important;
+  padding: 8px !important;
+}
+th {
+  background-color: #f3f4f6 !important;
+  font-weight: bold;
+}
+
+/* Memastikan gambar & tabel tidak terpotong (responsif) di layar HP siswa */
+img, table {
+  max-width: 100% !important;
+  height: auto;
+}
