@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabaseClient';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Users, PlusCircle, CheckCircle, XCircle, AlertTriangle, Edit, Trash2, UserPlus, BarChart2, Upload, Download, Menu, X, ShieldCheck, LogOut, Printer } from 'lucide-react';
+import { FileText, Users, PlusCircle, CheckCircle, XCircle, AlertTriangle, Edit, Trash2, UserPlus, BarChart2, Upload, Download, Menu, X, ShieldCheck, LogOut, Printer, Filter } from 'lucide-react';
 import JoditEditor from 'jodit-react';
 
 export default function Admin() {
@@ -22,10 +22,12 @@ export default function Admin() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isPrintingCards, setIsPrintingCards] = useState(false);
 
-  // Form Pembuatan Ujian Baru
+  // Form Pembuatan & Edit Ujian
   const [newExamTitle, setNewExamTitle] = useState('');
   const [newExamDuration, setNewExamDuration] = useState(60);
   const [newExamGuruId, setNewExamGuruId] = useState('');
+  const [isEditingExam, setIsEditingExam] = useState(false);
+  const [editExamId, setEditExamId] = useState(null);
 
   const [examDuration, setExamDuration] = useState(60);
 
@@ -54,6 +56,7 @@ export default function Admin() {
   const [passwordSiswa, setPasswordSiswa] = useState('');
   const [isEditingSiswa, setIsEditingSiswa] = useState(false);
   const [editSiswaId, setEditSiswaId] = useState(null);
+  const [filterKelas, setFilterKelas] = useState(''); // Filter Kelas State
 
   const [namaGuru, setNamaGuru] = useState('');
   const [mapelGuru, setMapelGuru] = useState('');
@@ -95,6 +98,10 @@ export default function Admin() {
     }
   };
 
+  // LOGIKA FILTER KELAS SISWA
+  const uniqueKelas = [...new Set(students.map(s => s.kelas).filter(Boolean))].sort();
+  const filteredStudents = filterKelas ? students.filter(s => s.kelas === filterKelas) : students;
+
   const changeActiveExam = async (examId, examToken) => {
     try {
       setActiveExamId(examId); setToken(examToken); setShowAnalisisKelas(false);
@@ -115,18 +122,44 @@ export default function Admin() {
     if (!error) { alert('Durasi waktu ujian berhasil diperbarui!'); fetchExamsList(); } else alert('Gagal memperbarui durasi: ' + error.message);
   };
 
-  const buatUjianBaru = async (e) => {
+  const simpanUjian = async (e) => {
     e.preventDefault();
     if (!newExamGuruId) return alert('Pilih Guru Pengampu terlebih dahulu!');
-    const newToken = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const { data, error } = await supabase.from('exams').insert([{ 
-      title: newExamTitle, token: newToken, is_active: true, duration_minutes: newExamDuration, guru_id: newExamGuruId 
-    }]).select();
     
-    if (data && !error) {
-      alert(`Ujian "${newExamTitle}" berhasil dibuat dengan Token: ${newToken}`);
-      setNewExamTitle(''); setNewExamGuruId(''); fetchExamsList(); changeActiveExam(data[0].id, data[0].token);
-    } else alert('Gagal membuat ujian baru: ' + (error?.message || 'Error database'));
+    if (isEditingExam) {
+      const { error } = await supabase.from('exams').update({ 
+        title: newExamTitle, duration_minutes: newExamDuration, guru_id: newExamGuruId 
+      }).eq('id', editExamId);
+      
+      if (!error) {
+        alert('Data ujian berhasil diperbarui!');
+        batalkanEditUjian(); fetchExamsList();
+      } else alert('Gagal memperbarui ujian: ' + error.message);
+    } else {
+      const newToken = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const { data, error } = await supabase.from('exams').insert([{ 
+        title: newExamTitle, token: newToken, is_active: true, duration_minutes: newExamDuration, guru_id: newExamGuruId 
+      }]).select();
+      
+      if (data && !error) {
+        alert(`Ujian "${newExamTitle}" berhasil dibuat dengan Token: ${newToken}`);
+        batalkanEditUjian(); fetchExamsList(); changeActiveExam(data[0].id, data[0].token);
+      } else alert('Gagal membuat ujian baru: ' + (error?.message || 'Error database'));
+    }
+  };
+
+  const handleEditExamClick = (ex) => {
+    setNewExamTitle(ex.title);
+    setNewExamGuruId(ex.guru_id);
+    setNewExamDuration(ex.duration_minutes || 60);
+    setIsEditingExam(true);
+    setEditExamId(ex.id);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const batalkanEditUjian = () => {
+    setIsEditingExam(false); setEditExamId(null);
+    setNewExamTitle(''); setNewExamGuruId(''); setNewExamDuration(60);
   };
 
   const hapusUjian = async (id, tokenDelete) => {
@@ -389,8 +422,9 @@ export default function Admin() {
     reader.readAsText(file);
   };
 
+  // CETAK KARTU BERDASARKAN FILTER KELAS
   const unduhKartuWord = () => {
-    if (students.length === 0) return alert('Belum ada data siswa untuk dicetak.');
+    if (filteredStudents.length === 0) return alert('Belum ada data siswa untuk dicetak.');
     const header = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
       <head><meta charset='utf-8'><title>Kartu Peserta Ujian</title><style>
         body { font-family: 'Times New Roman', Times, serif; margin: 0; padding: 0; }
@@ -405,7 +439,7 @@ export default function Admin() {
       </style></head><body>`;
     
     let body = `<div style='width: 100%;'>`;
-    students.forEach((s, idx) => {
+    filteredStudents.forEach((s, idx) => {
        if (idx > 0 && idx % 10 === 0) body += `<div class="page-break"></div>`;
        body += `<div class="card"><div class="header">KARTU PESERTA UJIAN CBT<br/>SMAN 1 BATUDAA PANTAI</div>
          <table><tr><td width="55" style="font-weight:bold;">Nama</td><td>: ${s.name}</td></tr><tr><td style="font-weight:bold;">Kelas</td><td>: ${s.kelas || '-'}</td></tr>
@@ -550,12 +584,11 @@ export default function Admin() {
     </button>
   );
 
-  // ==== TAMPILAN PRATINJAU CETAK KARTU (10 KARTU PER A4) ====
   if (isPrintingCards) {
     return (
       <div className="bg-gray-100 min-h-screen text-black print:bg-white">
         <div className="print:hidden p-4 bg-white flex justify-between items-center shadow-md mb-6 sticky top-0 z-50 border-t-4 border-blue-600">
-          <div><h2 className="text-xl font-bold text-gray-800">Pratinjau Cetak Kartu ({students.length} Siswa)</h2></div>
+          <div><h2 className="text-xl font-bold text-gray-800">Pratinjau Cetak Kartu ({filteredStudents.length} Siswa)</h2></div>
           <div className="flex gap-3">
              <button onClick={() => window.print()} className="px-6 py-2 bg-blue-600 text-white font-bold rounded shadow hover:bg-blue-700 flex items-center gap-2"><Printer size={18}/> Print / PDF</button>
              <button onClick={() => setIsPrintingCards(false)} className="px-6 py-2 bg-red-600 text-white font-bold rounded shadow hover:bg-red-700 flex items-center gap-2"><X size={18}/> Tutup</button>
@@ -563,7 +596,7 @@ export default function Admin() {
         </div>
         <div className="p-4 print:p-0 print:m-0 w-full max-w-[210mm] mx-auto bg-white print:bg-transparent shadow-lg print:shadow-none">
           <div className="grid grid-cols-1 md:grid-cols-2 print:grid-cols-2 gap-3 print:gap-2">
-            {students.map((s, idx) => (
+            {filteredStudents.map((s, idx) => (
                <div key={s.id} className="border-2 border-black p-2 bg-white break-inside-avoid shadow-sm print:shadow-none h-[54mm] flex flex-col justify-between">
                   <div>
                     <div className="text-center font-bold text-[9px] md:text-[10px] border-b border-black pb-1 mb-1 leading-none uppercase">KARTU PESERTA UJIAN CBT<br/>SMAN 1 BATUDAA PANTAI</div>
@@ -590,7 +623,7 @@ export default function Admin() {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-gray-100 font-sans print:bg-white">
-      {/* SIDEBAR ADMIN (Sembunyikan saat print dokumen) */}
+      {/* SIDEBAR ADMIN */}
       <div className="w-full md:w-64 bg-blue-900 text-white p-4 md:p-6 shrink-0 flex flex-col md:h-screen md:sticky top-0 z-20 shadow-md print:hidden">
         <div className="flex justify-between items-center mb-0 md:mb-8">
           <div><h1 className="text-xl md:text-2xl font-bold">Portal Guru</h1><p className="text-xs text-blue-300 font-medium">Masuk: {loggedInUser.name} {loggedInUser.role === 'admin' ? '(Admin)' : ''}</p></div>
@@ -629,13 +662,11 @@ export default function Admin() {
                   <button onClick={() => changeActiveExam(activeExamId, token)} className="px-3 py-2 bg-gray-200 text-gray-800 rounded font-bold hover:bg-gray-300 text-sm">Refresh</button>
                   <button onClick={() => setShowAnalisisKelas(!showAnalisisKelas)} className="px-3 py-2 bg-purple-100 text-purple-800 rounded font-bold hover:bg-purple-200 flex items-center gap-1 text-sm"><BarChart2 size={16}/> Analisis Klasikal</button>
                   
-                  {/* TOMBOL CETAK & EKSPOR LAPORAN KESELURUHAN */}
                   <button onClick={() => window.print()} className="px-3 py-2 bg-green-600 text-white rounded font-bold hover:bg-green-700 flex items-center gap-1 text-sm"><Printer size={16}/> Cetak PDF</button>
                   <button onClick={unduhLaporanKlasikalWord} className="px-3 py-2 bg-blue-800 text-white rounded font-bold hover:bg-blue-900 flex items-center gap-1 text-sm"><FileText size={16}/> Ekspor Word</button>
                 </div>
               </div>
 
-              {/* TAMPILAN KHUSUS CETAK: Kop Laporan Klasikal */}
               <div className="hidden print:block text-center mb-6">
                  <h2 className="text-2xl font-bold">LAPORAN HASIL UJIAN CBT</h2>
                  <p className="text-lg">Mata Pelajaran: {exams.find(e => String(e.id) === String(activeExamId))?.title || '-'}</p>
@@ -698,7 +729,6 @@ export default function Admin() {
                         let persenKosong = totalSiswa ? (100 - persenBenarPenuh - persenBenarParsial - persenSalah) : 0;
                         if (persenKosong < 0) persenKosong = 0;
 
-                        // Perhitungan sudut untuk Diagram Lingkaran Pintar CSS (conic-gradient)
                         const p1 = persenBenarPenuh;
                         const p2 = p1 + persenBenarParsial;
                         const p3 = p2 + persenSalah;
@@ -717,29 +747,21 @@ export default function Admin() {
                               </div>
                             ) : (
                               <div className="flex flex-col md:flex-row gap-8 items-center">
-                                {/* Bagian Kiri: Teks Soal */}
                                 <div className="flex-1 w-full">
                                   <div className="prose max-w-none text-sm md:text-base text-gray-700 print:text-black" dangerouslySetInnerHTML={{ __html: q.content }} />
                                 </div>
-                                
-                                {/* Bagian Kanan: Diagram Lingkaran (Donut Chart) & Legenda */}
                                 <div className="flex items-center gap-6 bg-gray-50 p-4 rounded-xl border border-gray-100 w-full md:w-auto shrink-0 print:border-black print:bg-transparent">
-                                   
-                                   {/* Lingkaran Pintar (conic-gradient) */}
                                    <div className="w-24 h-24 md:w-32 md:h-32 rounded-full flex items-center justify-center shadow-md shrink-0 relative print:shadow-none print:border print:border-gray-200" style={{ background: conicGradient }}>
                                       <div className="w-12 h-12 md:w-16 md:h-16 bg-gray-50 rounded-full flex items-center justify-center shadow-inner absolute print:bg-white print:border print:border-gray-300">
                                          <span className="text-xs md:text-sm font-bold text-gray-500 print:text-black">{totalSiswa} Siswa</span>
                                       </div>
                                    </div>
-                                   
-                                   {/* Legenda Diagram */}
                                    <div className="flex flex-col gap-2 text-xs md:text-sm font-bold">
                                       <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-green-500 print:border print:border-black"></div> <span className="text-gray-700 print:text-black">Benar: {benarPenuh} ({persenBenarPenuh}%)</span></div>
                                       {benarParsial > 0 && <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-yellow-500 print:border print:border-black"></div> <span className="text-gray-700 print:text-black">Parsial: {benarParsial} ({persenBenarParsial}%)</span></div>}
                                       <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-500 print:border print:border-black"></div> <span className="text-gray-700 print:text-black">Salah: {salah} ({persenSalah}%)</span></div>
                                       {kosong > 0 && <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-gray-400 print:border print:border-black"></div> <span className="text-gray-700 print:text-black">Kosong: {kosong} ({persenKosong}%)</span></div>}
                                    </div>
-
                                 </div>
                               </div>
                             )}
@@ -782,7 +804,7 @@ export default function Admin() {
           </div>
         )}
 
-        {/* MODAL ANALISIS INDIVIDU (EVALUASI/REMEDIAL) */}
+        {/* MODAL ANALISIS INDIVIDU */}
         {selectedResult && (
           <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-[9999] print:absolute print:inset-0 print:bg-transparent print:p-0 print:block">
             <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto print:max-h-none print:shadow-none print:border-none print:p-0 print:w-full print:m-0">
@@ -796,7 +818,6 @@ export default function Admin() {
                 </div>
               </div>
 
-              {/* Header Print Khusus Individu */}
               <div className="hidden print:block text-center mb-6">
                  <h2 className="text-2xl font-bold">LEMBAR HASIL UJIAN & EVALUASI SISWA</h2>
                  <p className="text-lg">Mata Pelajaran: {exams.find(e => String(e.id) === String(activeExamId))?.title || '-'}</p>
@@ -846,7 +867,6 @@ export default function Admin() {
                   }
 
                   const scoreText = Number(obtainedScore.toFixed(2));
-                  
                   let boxBorder = 'border-red-300 bg-red-50';
                   let statusIcon = <XCircle size={18} className="text-red-600 shrink-0 print:hidden"/>;
                   let badge = <span className="text-xs font-bold bg-red-100 text-red-800 px-2 py-0.5 rounded border border-red-300 print:text-black print:border-black">Skor: 0 / {maxScore}</span>;
@@ -1089,9 +1109,12 @@ export default function Admin() {
         {/* === TAB UJIAN (HANYA ADMIN) === */}
         {loggedInUser.role === 'admin' && activeTab === 'ujian' && (
           <div className="space-y-6 print:hidden">
-            <div className="bg-white p-5 md:p-6 rounded-lg shadow max-w-2xl border-t-4 border-blue-600">
-              <h2 className="text-xl font-bold mb-4 border-b pb-3">Generasi Token Ujian Baru</h2>
-              <form onSubmit={buatUjianBaru} className="space-y-4">
+            <div className={`bg-white p-5 md:p-6 rounded-lg shadow max-w-2xl border-t-4 ${isEditingExam ? 'border-yellow-500' : 'border-blue-600'}`}>
+              <div className="flex justify-between items-center mb-4 border-b pb-3">
+                <h2 className="text-xl font-bold">{isEditingExam ? 'Edit Data Ujian' : 'Generasi Token Ujian Baru'}</h2>
+                {isEditingExam && <button type="button" onClick={batalkanEditUjian} className="text-sm font-bold text-gray-500 hover:text-red-500 underline">Batal Edit</button>}
+              </div>
+              <form onSubmit={simpanUjian} className="space-y-4">
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">Mata Pelajaran (Judul Ujian)</label>
                   <input required type="text" className="w-full p-3 border rounded-lg focus:border-blue-500 focus:outline-none bg-gray-50 focus:bg-white transition-colors" placeholder="Contoh: Sumatif Akhir Semester - Bahasa Indonesia" value={newExamTitle} onChange={(e) => setNewExamTitle(e.target.value)} />
@@ -1113,14 +1136,16 @@ export default function Admin() {
                     </div>
                   </div>
                 </div>
-                <button type="submit" className="w-full py-4 font-black text-white bg-blue-600 rounded-lg shadow-lg hover:bg-blue-700 transition-colors text-lg mt-4">GENERATE TOKEN UJIAN BARU</button>
+                <button type="submit" className={`w-full py-4 font-black text-white rounded-lg shadow-lg transition-colors text-lg mt-4 ${isEditingExam ? 'bg-yellow-500 hover:bg-yellow-600 text-yellow-900' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                  {isEditingExam ? 'SIMPAN PERUBAHAN UJIAN' : 'GENERATE TOKEN UJIAN BARU'}
+                </button>
               </form>
             </div>
 
             <div className="bg-white p-4 md:p-6 rounded-lg shadow overflow-x-auto">
               <h2 className="text-xl font-bold mb-4 border-b pb-2">Daftar Seluruh Ujian/Token Sekolah ({exams.length})</h2>
               <table className="w-full text-left border-collapse text-sm md:text-base">
-                <thead><tr className="bg-gray-100 border-b"><th className="p-2 md:p-3">Mata Pelajaran</th><th className="p-2 md:p-3">Token</th><th className="p-2 md:p-3">Ubah Guru Pengampu (Pemilik)</th><th className="p-2 md:p-3 text-right">Aksi Hapus</th></tr></thead>
+                <thead><tr className="bg-gray-100 border-b"><th className="p-2 md:p-3">Mata Pelajaran</th><th className="p-2 md:p-3">Token</th><th className="p-2 md:p-3">Ubah Guru Pengampu (Pemilik)</th><th className="p-2 md:p-3 text-right">Aksi</th></tr></thead>
                 <tbody>
                   {exams.map(ex => (
                     <tr key={ex.id} className="border-b hover:bg-gray-50">
@@ -1132,7 +1157,10 @@ export default function Admin() {
                           {teachers.filter(t => t.role === 'guru').map(t => <option key={t.id} value={String(t.id)}>{t.name}</option>)}
                         </select>
                       </td>
-                      <td className="p-2 md:p-3 text-right"><button onClick={() => hapusUjian(ex.id, ex.token)} className="p-2 text-red-600 hover:bg-red-100 rounded" title="Hapus Permanen"><Trash2 size={18}/></button></td>
+                      <td className="p-2 md:p-3 text-right whitespace-nowrap">
+                        <button onClick={() => handleEditExamClick(ex)} className="p-1.5 md:p-2 text-blue-600 hover:bg-blue-100 rounded mr-1 transition-colors" title="Edit Ujian"><Edit size={16}/></button>
+                        <button onClick={() => hapusUjian(ex.id, ex.token)} className="p-1.5 md:p-2 text-red-600 hover:bg-red-100 rounded transition-colors" title="Hapus Permanen"><Trash2 size={16}/></button>
+                      </td>
                     </tr>
                   ))}
                   {exams.length === 0 && (<tr><td colSpan="4" className="p-4 text-center text-gray-500">Belum ada ujian yang dibuat oleh admin.</td></tr>)}
@@ -1178,8 +1206,18 @@ export default function Admin() {
             </div>
             
             <div className="bg-white p-4 md:p-6 rounded-lg shadow overflow-x-auto">
+              {/* FILTER KELAS UI */}
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 border-b pb-4 gap-4">
-                <h2 className="text-lg md:text-xl font-bold">Daftar Akun Siswa ({students.length})</h2>
+                <div className="flex flex-col md:flex-row items-start md:items-center gap-3">
+                  <h2 className="text-lg md:text-xl font-bold">Daftar Akun Siswa ({filteredStudents.length})</h2>
+                  <div className="flex items-center gap-2 bg-gray-100 px-3 py-1.5 rounded border border-gray-300">
+                    <Filter size={16} className="text-gray-500"/>
+                    <select value={filterKelas} onChange={(e) => setFilterKelas(e.target.value)} className="bg-transparent text-sm font-bold text-gray-700 outline-none cursor-pointer">
+                      <option value="">Semua Kelas</option>
+                      {uniqueKelas.map(k => <option key={k} value={k}>{k}</option>)}
+                    </select>
+                  </div>
+                </div>
                 <div className="flex gap-2 w-full md:w-auto">
                   <button onClick={() => setIsPrintingCards(true)} className="flex-1 md:flex-none px-4 py-2 bg-blue-600 text-white rounded font-bold flex items-center justify-center gap-2 text-sm shadow hover:bg-blue-700 transition-colors">
                     <Printer size={16}/> Cetak / PDF
@@ -1195,7 +1233,7 @@ export default function Admin() {
                   <th className="p-2 md:p-3">Nama Lengkap</th><th className="p-2 md:p-3 hidden md:table-cell">Kelas</th><th className="p-2 md:p-3">Username</th><th className="p-2 md:p-3 text-right">Aksi</th>
                 </tr></thead>
                 <tbody>
-                  {students.map(s => (
+                  {filteredStudents.map(s => (
                     <tr key={s.id} className="border-b hover:bg-gray-50">
                       <td className="p-2 md:p-3 font-semibold text-gray-800">{s.name} <div className="text-xs text-gray-500 md:hidden">{s.kelas}</div></td>
                       <td className="p-2 md:p-3 hidden md:table-cell text-gray-600">{s.kelas || '-'}</td>
@@ -1206,7 +1244,7 @@ export default function Admin() {
                       </td>
                     </tr>
                   ))}
-                  {students.length === 0 && (<tr><td colSpan="4" className="p-6 text-center text-gray-500">Belum ada akun siswa.</td></tr>)}
+                  {filteredStudents.length === 0 && (<tr><td colSpan="4" className="p-6 text-center text-gray-500">Data siswa tidak ditemukan.</td></tr>)}
                 </tbody>
               </table>
             </div>
