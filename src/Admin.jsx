@@ -550,6 +550,7 @@ export default function Admin() {
     </button>
   );
 
+  // ==== TAMPILAN PRATINJAU CETAK KARTU (10 KARTU PER A4) ====
   if (isPrintingCards) {
     return (
       <div className="bg-gray-100 min-h-screen text-black print:bg-white">
@@ -589,7 +590,7 @@ export default function Admin() {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-gray-100 font-sans print:bg-white">
-      {/* SIDEBAR ADMIN */}
+      {/* SIDEBAR ADMIN (Sembunyikan saat print dokumen) */}
       <div className="w-full md:w-64 bg-blue-900 text-white p-4 md:p-6 shrink-0 flex flex-col md:h-screen md:sticky top-0 z-20 shadow-md print:hidden">
         <div className="flex justify-between items-center mb-0 md:mb-8">
           <div><h1 className="text-xl md:text-2xl font-bold">Portal Guru</h1><p className="text-xs text-blue-300 font-medium">Masuk: {loggedInUser.name} {loggedInUser.role === 'admin' ? '(Admin)' : ''}</p></div>
@@ -642,10 +643,10 @@ export default function Admin() {
               </div>
               
               {showAnalisisKelas && (
-                <div className="mb-8 p-6 bg-purple-50 border border-purple-200 rounded-lg print:border-none print:p-0 print:bg-transparent print:mb-4">
-                  <h3 className="text-xl font-bold text-purple-900 mb-4 border-b border-purple-200 pb-2 print:text-black">A. Analisis Butir Soal Keseluruhan (Total Peserta: {results.length})</h3>
+                <div className="mb-8 p-6 bg-purple-50 border border-purple-200 rounded-xl print:border-none print:p-0 print:bg-transparent print:mb-4">
+                  <h3 className="text-xl font-bold text-purple-900 mb-6 border-b border-purple-200 pb-2 print:text-black">A. Analisis Butir Soal Keseluruhan (Total Peserta: {results.length})</h3>
                   {results.length === 0 ? (<p className="text-gray-500 italic">Belum ada siswa yang mengerjakan ujian ini.</p>) : (
-                    <div className="space-y-4 print:space-y-2">
+                    <div className="space-y-6 print:space-y-4">
                       {questions.map((q, idx) => {
                         let benarPenuh = 0; let benarParsial = 0; let salah = 0; let kosong = 0;
                         const maxScore = parseInt(q.bobot) || 1;
@@ -689,19 +690,59 @@ export default function Admin() {
                           }
                         });
 
+                        const totalSiswa = results.length;
+                        const persenBenarPenuh = totalSiswa ? Math.round((benarPenuh / totalSiswa) * 100) : 0;
+                        const persenBenarParsial = totalSiswa ? Math.round((benarParsial / totalSiswa) * 100) : 0;
+                        const persenSalah = totalSiswa ? Math.round((salah / totalSiswa) * 100) : 0;
+                        
+                        let persenKosong = totalSiswa ? (100 - persenBenarPenuh - persenBenarParsial - persenSalah) : 0;
+                        if (persenKosong < 0) persenKosong = 0;
+
+                        // Perhitungan sudut untuk Diagram Lingkaran Pintar CSS (conic-gradient)
+                        const p1 = persenBenarPenuh;
+                        const p2 = p1 + persenBenarParsial;
+                        const p3 = p2 + persenSalah;
+                        const conicGradient = `conic-gradient(#22c55e 0% ${p1}%, #eab308 ${p1}% ${p2}%, #ef4444 ${p2}% ${p3}%, #9ca3af ${p3}% 100%)`;
+
                         return (
-                          <div key={q.id} className="p-4 bg-white border rounded-lg shadow-sm print:shadow-none print:border-black print:break-inside-avoid">
-                            <div className="flex justify-between items-center mb-3 print:mb-1">
+                          <div key={q.id} className="p-5 bg-white border rounded-xl shadow-sm print:shadow-none print:border-black print:break-inside-avoid">
+                            <div className="flex justify-between items-center mb-4 border-b pb-3 print:border-black">
                               <span className="font-bold text-lg print:text-base">Soal No. {idx + 1} <span className="text-sm font-normal text-gray-500 print:text-gray-800">({q.type} - Bobot: {maxScore})</span></span>
                               <span className={`text-xs font-bold px-3 py-1 rounded-full print:border print:border-black ${q.type === 'U' ? 'bg-gray-100 text-gray-600' : 'bg-blue-100 text-blue-800'}`}>{q.type === 'U' ? 'Manual Check' : 'Auto-Grade'}</span>
                             </div>
                             
-                            <div className="flex flex-wrap gap-4 text-sm font-bold mt-2 print:mt-1">
-                              {q.type !== 'U' && <span className="text-green-600 print:text-black">Benar Penuh: {benarPenuh}</span>}
-                              {q.type !== 'U' && <span className="text-yellow-600 print:text-black">Benar Parsial: {benarParsial}</span>}
-                              {q.type !== 'U' && <span className="text-red-600 print:text-black">Salah: {salah}</span>}
-                              {kosong > 0 && <span className="text-gray-500 print:text-black">Kosong: {kosong}</span>}
-                            </div>
+                            {q.type === 'U' ? (
+                              <div className="text-gray-500 italic p-4 bg-gray-50 rounded text-center print:border print:border-gray-300">
+                                Soal uraian dinilai secara manual oleh guru. Diagram klasikal otomatis tidak tersedia untuk soal ini.
+                              </div>
+                            ) : (
+                              <div className="flex flex-col md:flex-row gap-8 items-center">
+                                {/* Bagian Kiri: Teks Soal */}
+                                <div className="flex-1 w-full">
+                                  <div className="prose max-w-none text-sm md:text-base text-gray-700 print:text-black" dangerouslySetInnerHTML={{ __html: q.content }} />
+                                </div>
+                                
+                                {/* Bagian Kanan: Diagram Lingkaran (Donut Chart) & Legenda */}
+                                <div className="flex items-center gap-6 bg-gray-50 p-4 rounded-xl border border-gray-100 w-full md:w-auto shrink-0 print:border-black print:bg-transparent">
+                                   
+                                   {/* Lingkaran Pintar (conic-gradient) */}
+                                   <div className="w-24 h-24 md:w-32 md:h-32 rounded-full flex items-center justify-center shadow-md shrink-0 relative print:shadow-none print:border print:border-gray-200" style={{ background: conicGradient }}>
+                                      <div className="w-12 h-12 md:w-16 md:h-16 bg-gray-50 rounded-full flex items-center justify-center shadow-inner absolute print:bg-white print:border print:border-gray-300">
+                                         <span className="text-xs md:text-sm font-bold text-gray-500 print:text-black">{totalSiswa} Siswa</span>
+                                      </div>
+                                   </div>
+                                   
+                                   {/* Legenda Diagram */}
+                                   <div className="flex flex-col gap-2 text-xs md:text-sm font-bold">
+                                      <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-green-500 print:border print:border-black"></div> <span className="text-gray-700 print:text-black">Benar: {benarPenuh} ({persenBenarPenuh}%)</span></div>
+                                      {benarParsial > 0 && <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-yellow-500 print:border print:border-black"></div> <span className="text-gray-700 print:text-black">Parsial: {benarParsial} ({persenBenarParsial}%)</span></div>}
+                                      <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-500 print:border print:border-black"></div> <span className="text-gray-700 print:text-black">Salah: {salah} ({persenSalah}%)</span></div>
+                                      {kosong > 0 && <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-gray-400 print:border print:border-black"></div> <span className="text-gray-700 print:text-black">Kosong: {kosong} ({persenKosong}%)</span></div>}
+                                   </div>
+
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
