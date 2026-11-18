@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Clock, AlertTriangle, ZoomIn, ZoomOut, X, LogOut, CheckCircle2, ChevronLeft, ChevronRight, HelpCircle, Grid } from 'lucide-react';
+import { Clock, AlertTriangle, ZoomIn, ZoomOut, X, LogOut, CheckCircle2, ChevronLeft, ChevronRight, HelpCircle, Grid, Menu } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 
@@ -210,7 +210,6 @@ export default function ExamCBT() {
 
   const isReadyToStart = checkDND && checkOverlay && checkFocus;
 
-  // ==== UI FASE 1 & FASE 2 TETAP SAMA (Disembunyikan agar kode ringkas) ====
   if (step === 'DASHBOARD') {
     return (
       <div className="min-h-screen bg-gray-200 p-4 flex items-center justify-center font-sans">
@@ -295,7 +294,6 @@ export default function ExamCBT() {
     );
   }
 
-  // ==== UI: FASE 3 (UJIAN BERLANGSUNG - DESAIN ANBK STYLE) ====
   return (
     <div className="flex flex-col h-[100dvh] bg-[#f0f2f5] font-sans select-none overflow-hidden relative">
       
@@ -356,7 +354,7 @@ export default function ExamCBT() {
         </div>
       </div>
 
-      {/* AREA UTAMA KONTEN (FLEX GROW) */}
+      {/* AREA UTAMA KONTEN */}
       <main className="flex-1 overflow-y-auto relative bg-[#f0f2f5] p-2 md:p-6">
         
         {/* PANEL DAFTAR SOAL MENGAMBANG (OFF-CANVAS) */}
@@ -372,9 +370,9 @@ export default function ExamCBT() {
                   const isDoubt = doubtful.has(q.id);
                   const isActive = idx === currentIdx;
                   
-                  let bgColor = 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'; // Belum dijawab (Putih)
-                  if (isDoubt) bgColor = 'bg-yellow-400 text-black border-yellow-500'; // Ragu-ragu (Kuning)
-                  else if (isAnswered) bgColor = 'bg-blue-600 text-white border-blue-700'; // Sudah dijawab (Biru)
+                  let bgColor = 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100';
+                  if (isDoubt) bgColor = 'bg-yellow-400 text-black border-yellow-500'; 
+                  else if (isAnswered) bgColor = 'bg-blue-600 text-white border-blue-700';
                   
                   return (
                     <button key={q.id} onClick={() => { setCurrentIdx(idx); setShowQuestionGrid(false); }}
@@ -392,12 +390,8 @@ export default function ExamCBT() {
           </div>
         )}
 
-        {/* CONTAINER SOAL & JAWABAN */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 min-h-full flex flex-col overflow-hidden max-w-6xl mx-auto">
-          
           <div className="flex flex-col md:flex-row flex-1">
-            
-            {/* BAGIAN KIRI: STIMULUS SOAL */}
             <div className={`p-5 md:p-8 ${questions[currentIdx]?.type === 'M' || questions[currentIdx]?.type === 'BS' ? 'w-full md:w-1/2 md:border-r border-gray-200' : 'w-full'}`}>
               <div 
                 className="prose prose-sm md:prose-base max-w-none text-gray-800 [&_img]:cursor-zoom-in [&_img]:border [&_img]:border-gray-300 [&_img]:rounded [&_img]:shadow-sm [&_img]:max-w-full leading-relaxed" 
@@ -406,10 +400,8 @@ export default function ExamCBT() {
               />
             </div>
 
-            {/* BAGIAN KANAN / BAWAH: AREA JAWABAN */}
             <div className={`p-5 md:p-8 bg-[#fafafa] ${questions[currentIdx]?.type === 'M' || questions[currentIdx]?.type === 'BS' ? 'w-full md:w-1/2' : 'w-full border-t border-gray-200 mt-4 md:mt-0'}`}>
               <div className="space-y-3">
-                {/* 1. Pilihan Ganda */}
                 {questions[currentIdx]?.type === 'PG' && Array.isArray(questions[currentIdx].options) && questions[currentIdx].options.map((opt, i) => (
                   <label key={i} className="flex items-start p-4 bg-white border-2 border-gray-200 rounded-xl cursor-pointer hover:border-blue-300 hover:bg-blue-50 has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50 transition-all shadow-sm">
                     <input type="radio" name="pg" className="w-5 h-5 md:w-6 md:h-6 mt-0.5 mr-4 accent-blue-600 shrink-0" 
@@ -419,7 +411,6 @@ export default function ExamCBT() {
                   </label>
                 ))}
 
-                {/* 2. Pilihan Ganda Kompleks */}
                 {questions[currentIdx]?.type === 'PGK' && (
                   <>
                     <p className="text-xs font-bold text-gray-500 mb-3 bg-gray-200 inline-block px-2 py-1 rounded">Pilih maksimal 3 jawaban yang benar:</p>
@@ -441,7 +432,6 @@ export default function ExamCBT() {
                   </>
                 )}
 
-                {/* 3. Benar / Salah (Tabel Mirip ANBK) */}
                 {questions[currentIdx]?.type === 'BS' && (
                   <div className="bg-white border rounded-xl overflow-hidden shadow-sm">
                     <table className="w-full text-sm md:text-base text-left">
@@ -474,7 +464,6 @@ export default function ExamCBT() {
                   </div>
                 )}
 
-                {/* 4. Isian Singkat */}
                 {questions[currentIdx]?.type === 'IS' && (
                   <div className="mt-2">
                     <p className="text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">Ketik Jawaban Singkat Anda:</p>
@@ -486,7 +475,6 @@ export default function ExamCBT() {
                   </div>
                 )}
 
-                {/* 5. Uraian */}
                 {questions[currentIdx]?.type === 'U' && (
                   <div className="mt-2">
                      <p className="text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">Ketik Penjelasan Uraian Anda:</p>
@@ -498,7 +486,6 @@ export default function ExamCBT() {
                   </div>
                 )}
 
-                {/* 6. Menjodohkan (Dropdown Table Style) */}
                 {questions[currentIdx]?.type === 'M' && (
                   <div className="bg-white border rounded-xl overflow-hidden shadow-sm">
                     <table className="w-full text-sm md:text-base text-left">
@@ -541,7 +528,6 @@ export default function ExamCBT() {
       <footer className="bg-white border-t border-gray-200 p-3 md:p-4 shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20">
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-2 md:gap-4">
           
-          {/* Tombol Sebelumnya (Merah) */}
           <button 
             onClick={() => setCurrentIdx(prev => Math.max(0, prev - 1))} 
             disabled={currentIdx === 0} 
@@ -550,13 +536,11 @@ export default function ExamCBT() {
             <ChevronLeft size={18} className="shrink-0"/> <span className="hidden md:inline">Soal</span> Sebelumnya
           </button>
           
-          {/* Tombol Ragu-Ragu (Kuning) */}
           <label className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-3 md:px-10 md:py-4 font-bold text-yellow-900 bg-yellow-400 rounded-full cursor-pointer hover:bg-yellow-500 transition-colors shadow-md text-xs md:text-sm whitespace-nowrap">
             <input type="checkbox" checked={doubtful.has(questions[currentIdx]?.id)} onChange={toggleDoubt} className="w-4 h-4 md:w-5 md:h-5 accent-yellow-900 rounded" /> 
             <HelpCircle size={16} className="hidden md:block"/> Ragu-Ragu
           </label>
           
-          {/* Tombol Selanjutnya (Hijau) / Selesai */}
           {currentIdx === questions.length - 1 ? (
             <button 
               onClick={() => handleSelesaiUjian(false)} 
