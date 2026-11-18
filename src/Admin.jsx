@@ -668,4 +668,63 @@ export default function Admin() {
                       <th className="p-2 md:p-4 print:border print:border-black">Nama</th><th className="p-2 md:p-4 print:border print:border-black hidden md:table-cell">Kelas</th><th className="p-2 md:p-4 print:border print:border-black text-center">Nilai Auto-Grade</th><th className="p-2 md:p-4 text-right print:hidden">Aksi</th>
                   </tr></thead>
                   <tbody>
-                    {results.map((
+                    {results.map((res) => (
+                      <tr key={res.id} className="border-b hover:bg-gray-50 transition-colors print:border-black">
+                        <td className="p-2 md:p-4 font-semibold text-gray-800 print:border print:border-black print:text-black">{res.users?.name} <div className="text-xs text-gray-500 md:hidden">{res.users?.kelas}</div></td>
+                        <td className="p-2 md:p-4 hidden md:table-cell text-gray-600 print:border print:border-black print:text-black">{res.users?.kelas || '-'}</td>
+                        <td className="p-2 md:p-4 text-center font-bold text-xl md:text-2xl text-indigo-600 print:border print:border-black print:text-black print:text-lg">{res.score}</td>
+                        <td className="p-2 md:p-4 text-right flex justify-end gap-1 md:gap-2 items-center print:hidden">
+                          <button onClick={() => setSelectedResult(res)} className="px-2 py-1.5 md:px-4 md:py-2 bg-indigo-600 text-white font-bold rounded shadow hover:bg-indigo-700 text-xs md:text-sm">Analisis Rinci</button>
+                          <button onClick={() => hapusHasilUjian(res.id, res.users?.name)} className="p-1.5 md:p-2 bg-red-100 text-red-600 rounded hover:bg-red-200"><Trash2 size={16}/></button>
+                        </td>
+                      </tr>
+                    ))}
+                    {results.length === 0 && (<tr><td colSpan="4" className="p-6 md:p-8 text-center text-gray-500 italic print:border print:border-black">Belum ada data nilai masuk.</td></tr>)}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {selectedResult && (
+          <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-[9999] print:absolute print:inset-0 print:bg-transparent print:p-0 print:block">
+            <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto print:max-h-none print:shadow-none print:border-none print:p-0 print:w-full print:m-0">
+              <div className="flex justify-between items-center mb-6 border-b pb-4 print:hidden">
+                <h2 className="text-xl md:text-2xl font-bold text-gray-800">Evaluasi: {selectedResult.users?.name}</h2>
+                <div className="flex gap-2 items-center"><button onClick={() => window.print()} className="px-4 py-2 bg-green-600 text-white font-bold rounded shadow hover:bg-green-700 flex items-center gap-2"><Printer size={16}/> Cetak</button><button onClick={() => unduhAnalisisIndividuWord(selectedResult)} className="px-4 py-2 bg-indigo-800 text-white font-bold rounded shadow hover:bg-indigo-900 flex items-center gap-2"><FileText size={16}/> Ekspor Word</button><button onClick={() => setSelectedResult(null)} className="ml-2 text-red-500 hover:bg-red-50 p-2 rounded-full font-bold"><X size={24}/></button></div>
+              </div>
+              <div className="hidden print:block text-center mb-6"><h2 className="text-2xl font-bold">LEMBAR EVALUASI SISWA</h2><p className="text-lg">Mata Pelajaran: {exams.find(e => String(e.id) === String(activeExamId))?.title || '-'}</p><hr className="border-black my-4"/><table className="w-full text-left font-bold text-lg mb-6"><tbody><tr><td width="20%">Nama Siswa</td><td>: {selectedResult.users?.name}</td><td rowSpan="2" className="text-right text-3xl">Nilai: {selectedResult.score}</td></tr><tr><td>Kelas</td><td>: {selectedResult.users?.kelas || '-'}</td></tr></tbody></table></div>
+              
+              <div className="space-y-6 print:space-y-4">
+                {questions.map((q, idx) => {
+                  const studentAns = selectedResult.answers[q.id]; const maxScore = parseInt(q.bobot) || 1; let obtainedScore = 0; let displayStudentAns = studentAns;
+                  if (studentAns && !(Array.isArray(studentAns) && studentAns.length === 0) && !(typeof studentAns === 'object' && Object.keys(studentAns).length === 0)) {
+                    if (q.type === 'PG') { if (studentAns === q.correct_answer) obtainedScore = maxScore; }
+                    else if (q.type === 'PGK') { const aA = Array.isArray(studentAns)?studentAns:[]; const cA = Array.isArray(q.correct_answer)?q.correct_answer:[]; let c = 0, w = 0; aA.forEach(v => { if (cA.includes(v)) c++; else w++; }); let ratio = (c - w) / cA.length; obtainedScore = (ratio < 0 ? 0 : ratio) * maxScore; displayStudentAns = aA.join(', '); }
+                    else if (q.type === 'BS') { const aO = studentAns || {}; let c = 0; q.correct_answer.forEach((k, i) => { if (aO[i] === k) c++; }); obtainedScore = (c / q.correct_answer.length) * maxScore; displayStudentAns = q.options.map((opt, i) => `${opt} (${aO[i] || '-'})`).join(', '); }
+                    else if (q.type === 'IS') { if (String(studentAns).trim().toLowerCase() === String(q.correct_answer).trim().toLowerCase()) obtainedScore = maxScore; }
+                    else if (q.type === 'M') { const aM = studentAns || {}; let c = 0; q.correct_answer.forEach((k, i) => { if (aM[i] === k) c++; }); obtainedScore = (c / q.correct_answer.length) * maxScore; displayStudentAns = q.options.map((opt, i) => `${opt} ➜ ${aM[i] || '-'}`).join(' | '); }
+                  }
+                  
+                  let boxBorder = 'border-red-300 bg-red-50'; let statusIcon = <XCircle size={18} className="text-red-600 shrink-0 print:hidden"/>; let badge = <span className="text-xs font-bold bg-red-100 text-red-800 px-2 py-0.5 rounded border border-red-300 print:text-black print:border-black">Skor: 0 / {maxScore}</span>;
+                  if (q.type === 'U') { boxBorder = 'border-blue-300 bg-blue-50'; statusIcon = <CheckCircle size={18} className="text-blue-600 shrink-0 print:hidden"/>; badge = <span className="text-xs font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded border border-blue-300 print:text-black print:border-black">Menunggu Koreksi</span>; } 
+                  else if (!studentAns || (Array.isArray(studentAns) && studentAns.length === 0)) { badge = <span className="text-xs font-bold bg-gray-200 text-gray-800 px-2 py-0.5 rounded border border-gray-400 print:text-black print:border-black">Kosong (Skor: 0 / {maxScore})</span>; } 
+                  else if (obtainedScore >= maxScore * 0.99) { boxBorder = 'border-green-300 bg-green-50'; statusIcon = <CheckCircle size={18} className="text-green-600 shrink-0 print:hidden"/>; badge = <span className="text-xs font-bold bg-green-100 text-green-800 px-2 py-0.5 rounded border border-green-300 print:text-black print:border-black">Skor: {maxScore} / {maxScore} (Sempurna)</span>; } 
+                  else if (obtainedScore > 0) { boxBorder = 'border-yellow-300 bg-yellow-50'; statusIcon = <AlertTriangle size={18} className="text-yellow-600 shrink-0 print:hidden"/>; badge = <span className="text-xs font-bold bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded border border-yellow-400 print:text-black print:border-black">Skor: {Number(obtainedScore.toFixed(2))} / {maxScore} (Parsial)</span>; }
+
+                  let keyStr = ""; if (q.type === 'BS') keyStr = q.options.map((opt, i) => `${opt} (${q.correct_answer[i]})`).join(', '); else if (q.type === 'M') keyStr = q.options.map((opt, i) => `${opt} ➜ ${q.correct_answer[i]}`).join('  |  '); else if (Array.isArray(q.correct_answer)) keyStr = q.correct_answer.join(', '); else keyStr = q.correct_answer;
+                  return (
+                    <div key={q.id} className={`p-4 md:p-5 border rounded-lg ${boxBorder} print:bg-transparent print:border-black print:break-inside-avoid`}><div className="flex gap-2 font-semibold text-gray-800 border-b pb-3 mb-3 print:border-black"><span>{idx + 1}.</span><div className="w-full"><div className="flex justify-between items-center w-full mb-2"><span className="text-xs font-bold text-gray-500 print:text-black">Tipe: {q.type}</span>{badge}</div><div className="prose max-w-none text-sm md:text-base print:text-black" dangerouslySetInnerHTML={{ __html: q.content }} /></div></div>
+                      <div className="text-sm grid grid-cols-1 md:grid-cols-2 gap-4"><div><p className="text-gray-600 mb-1 font-bold print:text-black">Jawaban Siswa:</p><p className="font-medium flex items-start gap-2 print:text-black">{statusIcon}<span className="break-words font-bold">{displayStudentAns || 'Tidak dijawab'}</span></p></div><div><p className="text-gray-600 mb-1 font-bold print:text-black">Kunci Benar:</p><p className="font-medium text-indigo-700 break-words print:text-black">{keyStr}</p></div></div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* === TAB SOAL (REVISI: TERBUKA JUGA UNTUK GURU) === */}
+        {activeTab === 'soal' && (
+          <div className="max-w-4xl mx-auto space-y-6 md:space-y-
