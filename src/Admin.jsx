@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabaseClient';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Users, PlusCircle, CheckCircle, XCircle, AlertTriangle, Edit, Trash2, UserPlus, BarChart2, Upload, Download, Menu, X, ShieldCheck, LogOut, Printer, Filter } from 'lucide-react';
+import { FileText, Users, PlusCircle, CheckCircle, XCircle, AlertTriangle, Edit, Trash2, UserPlus, BarChart2, Upload, Download, Menu, X, ShieldCheck, LogOut, Printer, Filter, Key, Activity, Calendar, Clock as ClockIcon, RefreshCw, XSquare } from 'lucide-react';
 import JoditEditor from 'jodit-react';
 
 export default function Admin() {
   const navigate = useNavigate();
   const loggedInUser = JSON.parse(localStorage.getItem('user') || '{}');
 
-  const [activeTab, setActiveTab] = useState('hasil');
+  const [activeTab, setActiveTab] = useState('jadwal'); // Default kini ke Jadwal
   const [exams, setExams] = useState([]);
   const [activeExamId, setActiveExamId] = useState(null);
   const [token, setToken] = useState('');
@@ -22,10 +22,18 @@ export default function Admin() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isPrintingCards, setIsPrintingCards] = useState(false);
 
-  // Form Pembuatan & Edit Ujian
+  // State Live Proktor
+  const [liveSessions, setLiveSessions] = useState([]);
+  const [activeProctorExam, setActiveProctorExam] = useState(null);
+
+  // Form Pembuatan & Edit Ujian (Ditambah Jadwal & Kelas)
   const [newExamTitle, setNewExamTitle] = useState('');
   const [newExamDuration, setNewExamDuration] = useState(60);
   const [newExamGuruId, setNewExamGuruId] = useState('');
+  const [newExamDate, setNewExamDate] = useState('');
+  const [newExamStart, setNewExamStart] = useState('');
+  const [newExamEnd, setNewExamEnd] = useState('');
+  const [newExamKelas, setNewExamKelas] = useState('');
   const [isEditingExam, setIsEditingExam] = useState(false);
   const [editExamId, setEditExamId] = useState(null);
 
@@ -41,7 +49,6 @@ export default function Admin() {
   const [kunciPGK, setKunciPGK] = useState([]);
   const [opsiBS, setOpsiBS] = useState(['', '', '']);
   const [kunciBS, setKunciBS] = useState(['B', 'B', 'B']);
-  
   const [kunciIS, setKunciIS] = useState('');
   const [kunciU, setKunciU] = useState('');
   const [pasanganM, setPasanganM] = useState([{kiri: '', kanan: ''}, {kiri: '', kanan: ''}]);
@@ -56,7 +63,7 @@ export default function Admin() {
   const [passwordSiswa, setPasswordSiswa] = useState('');
   const [isEditingSiswa, setIsEditingSiswa] = useState(false);
   const [editSiswaId, setEditSiswaId] = useState(null);
-  const [filterKelas, setFilterKelas] = useState(''); // Filter Kelas State
+  const [filterKelas, setFilterKelas] = useState(''); 
 
   const [namaGuru, setNamaGuru] = useState('');
   const [mapelGuru, setMapelGuru] = useState('');
@@ -80,13 +87,31 @@ export default function Admin() {
     if (loggedInUser.role === 'admin') fetchUsers();
   }, [navigate]);
 
+  // Polling Token & Status setiap detik
+  const [currentTime, setCurrentTime] = useState(new Date());
+  useEffect(() => {
+    const timer = setInterval(() => { setCurrentTime(new Date()); }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Polling Live Peserta setiap 5 detik jika di tab 'pantau'
+  useEffect(() => {
+    let poller;
+    if (activeTab === 'pantau' && activeProctorExam) {
+       fetchLiveSessions(activeProctorExam);
+       poller = setInterval(() => fetchLiveSessions(activeProctorExam), 5000);
+    }
+    return () => clearInterval(poller);
+  }, [activeTab, activeProctorExam]);
+
   const fetchExamsList = async () => {
-    let query = supabase.from('exams').select('*').order('id', { ascending: false });
+    let query = supabase.from('exams').select('*').order('schedule_date', { ascending: false });
     if (loggedInUser.role !== 'admin') query = query.eq('guru_id', loggedInUser.id);
     const { data } = await query;
     if (data) {
       setExams(data);
       if (data.length > 0 && !activeExamId) changeActiveExam(data[0].id, data[0].token);
+      data.forEach(ex => checkAndRotateToken(ex)); // Auto-generate token if expired
     }
   };
 
@@ -98,7 +123,6 @@ export default function Admin() {
     }
   };
 
-  // LOGIKA FILTER KELAS SISWA
   const uniqueKelas = [...new Set(students.map(s => s.kelas).filter(Boolean))].sort();
   const filteredStudents = filterKelas ? students.filter(s => s.kelas === filterKelas) : students;
 
@@ -122,27 +146,89 @@ export default function Admin() {
     if (!error) { alert('Durasi waktu ujian berhasil diperbarui!'); fetchExamsList(); } else alert('Gagal memperbarui durasi: ' + error.message);
   };
 
+  // LOGIKA TOKEN DINAMIS 15 MENIT
+  const generateRandom6Digit = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+  const checkAndRotateToken = async (ex) => {
+    if (!ex.is_active) return;
+    const now = new Date();
+    const expiresAt = ex.token_expires_at ? new Date(ex.token_expires_at) : new Date(0);
+    
+    if (now >= expiresAt) {
+      const newToken = generateRandom6Digit();
+      const newExpiresAt = new Date(now.getTime() + 15 * 60000);
+      await supabase.from('exams').update({ 
+        token: newToken, token_expires_at: newExpiresAt.toISOString() 
+      }).eq('id', ex.id);
+    }
+  };
+
+  const forceRotateToken = async (examId) => {
+    const newToken = generateRandom6Digit();
+    const newExpiresAt = new Date(new Date().getTime() + 15 * 60000);
+    const { error } = await supabase.from('exams').update({ 
+      token: newToken, token_expires_at: newExpiresAt.toISOString() 
+    }).eq('id', examId);
+    if (!error) { fetchExamsList(); alert('Token berhasil diperbarui manual!'); }
+  };
+
+  const toggleStatusUjian = async (examId, currentStatus) => {
+    const { error } = await supabase.from('exams').update({ is_active: !currentStatus }).eq('id', examId);
+    if (!error) fetchExamsList();
+  };
+
+  // LIVE PROKTOR
+  const fetchLiveSessions = async (examId) => {
+    const { data } = await supabase.from('live_sessions').select('*, users(name, username, kelas)').eq('exam_id', examId);
+    if (data) setLiveSessions(data);
+  };
+
+  const getStatusText = (ex) => {
+    if (!ex.is_active) return <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold border border-red-200">Ditutup</span>;
+    if (!ex.schedule_date) return <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold border border-green-200">Terbuka Bebas</span>;
+    
+    const now = new Date();
+    const startStr = `${ex.schedule_date}T${ex.start_time || '00:00'}:00`;
+    const endStr = `${ex.schedule_date}T${ex.end_time || '23:59'}:00`;
+    const start = new Date(startStr); const end = new Date(endStr);
+    
+    if (now < start) return <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs font-bold border border-yellow-300">Belum Mulai</span>;
+    if (now > end) return <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs font-bold border border-gray-300">Selesai / Lewat Waktu</span>;
+    return <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold border border-green-200">Berlangsung</span>;
+  };
+
+  const formatCountdown = (expiresAtStr) => {
+    if (!expiresAtStr) return "00:00";
+    const diff = Math.max(0, Math.floor((new Date(expiresAtStr).getTime() - currentTime.getTime()) / 1000));
+    const m = Math.floor(diff / 60).toString().padStart(2, '0');
+    const s = (diff % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
   const simpanUjian = async (e) => {
     e.preventDefault();
     if (!newExamGuruId) return alert('Pilih Guru Pengampu terlebih dahulu!');
     
+    const payload = { 
+      title: newExamTitle, duration_minutes: newExamDuration, guru_id: newExamGuruId,
+      schedule_date: newExamDate || null, start_time: newExamStart || null, 
+      end_time: newExamEnd || null, target_kelas: newExamKelas || null
+    };
+
     if (isEditingExam) {
-      const { error } = await supabase.from('exams').update({ 
-        title: newExamTitle, duration_minutes: newExamDuration, guru_id: newExamGuruId 
-      }).eq('id', editExamId);
-      
+      const { error } = await supabase.from('exams').update(payload).eq('id', editExamId);
       if (!error) {
         alert('Data ujian berhasil diperbarui!');
         batalkanEditUjian(); fetchExamsList();
       } else alert('Gagal memperbarui ujian: ' + error.message);
     } else {
-      const newToken = Math.random().toString(36).substring(2, 8).toUpperCase();
-      const { data, error } = await supabase.from('exams').insert([{ 
-        title: newExamTitle, token: newToken, is_active: true, duration_minutes: newExamDuration, guru_id: newExamGuruId 
-      }]).select();
+      payload.token = generateRandom6Digit();
+      payload.is_active = true;
+      payload.token_expires_at = new Date(new Date().getTime() + 15 * 60000).toISOString();
       
+      const { data, error } = await supabase.from('exams').insert([payload]).select();
       if (data && !error) {
-        alert(`Ujian "${newExamTitle}" berhasil dibuat dengan Token: ${newToken}`);
+        alert(`Ujian "${newExamTitle}" berhasil dibuat dengan Token: ${payload.token}`);
         batalkanEditUjian(); fetchExamsList(); changeActiveExam(data[0].id, data[0].token);
       } else alert('Gagal membuat ujian baru: ' + (error?.message || 'Error database'));
     }
@@ -152,6 +238,10 @@ export default function Admin() {
     setNewExamTitle(ex.title);
     setNewExamGuruId(ex.guru_id);
     setNewExamDuration(ex.duration_minutes || 60);
+    setNewExamDate(ex.schedule_date || '');
+    setNewExamStart(ex.start_time || '');
+    setNewExamEnd(ex.end_time || '');
+    setNewExamKelas(ex.target_kelas || '');
     setIsEditingExam(true);
     setEditExamId(ex.id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -160,6 +250,7 @@ export default function Admin() {
   const batalkanEditUjian = () => {
     setIsEditingExam(false); setEditExamId(null);
     setNewExamTitle(''); setNewExamGuruId(''); setNewExamDuration(60);
+    setNewExamDate(''); setNewExamStart(''); setNewExamEnd(''); setNewExamKelas('');
   };
 
   const hapusUjian = async (id, tokenDelete) => {
@@ -167,6 +258,7 @@ export default function Admin() {
     if (!konfirmasi) return;
     await supabase.from('exam_results').delete().eq('exam_id', id);
     await supabase.from('questions').delete().eq('exam_id', id);
+    await supabase.from('live_sessions').delete().eq('exam_id', id);
     const { error } = await supabase.from('exams').delete().eq('id', id);
     if (!error) {
       fetchExamsList();
@@ -428,13 +520,13 @@ export default function Admin() {
     const header = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
       <head><meta charset='utf-8'><title>Kartu Peserta Ujian</title><style>
         body { font-family: 'Times New Roman', Times, serif; margin: 0; padding: 0; }
-        .card { border: 1.5px solid black; padding: 4px 6px; margin-bottom: 6px; width: 48%; float: left; margin-right: 2%; box-sizing: border-box; height: 130px; overflow: hidden; }
+        .card { border: 1.5px solid black; padding: 3px 5px; margin-bottom: 5px; width: 48%; float: left; margin-right: 2%; box-sizing: border-box; height: 110px; overflow: hidden; }
         .card:nth-child(even) { margin-right: 0; }
-        .header { text-align: center; border-bottom: 1.5px solid black; padding-bottom: 2px; margin-bottom: 3px; font-weight: bold; font-size: 10.5px; line-height: 1.1; }
-        table { width: 100%; font-size: 9px; border-collapse: collapse; line-height: 1; }
-        td { padding: 0.5px 0; }
-        .foto { border: 1px solid black; width: 32px; height: 42px; text-align: center; line-height: 42px; font-size: 8px; color: #555; background-color: #f9f9f9; }
-        .ttd { text-align: center; font-size: 9px; vertical-align: bottom; }
+        .header { text-align: center; border-bottom: 1.5px solid black; padding-bottom: 1px; margin-bottom: 2px; font-weight: bold; font-size: 10px; line-height: 1.1; }
+        table { width: 100%; font-size: 9px; border-collapse: collapse; line-height: 0.9; }
+        td { padding: 0; }
+        .foto { border: 1px solid black; width: 24px; height: 36px; text-align: center; line-height: 36px; font-size: 8px; color: #555; background-color: #f9f9f9; }
+        .ttd { text-align: center; font-size: 8.5px; vertical-align: bottom; line-height: 1; }
         .clear { clear: both; } .page-break { page-break-before: always; clear: both; }
       </style></head><body>`;
     
@@ -444,7 +536,7 @@ export default function Admin() {
        body += `<div class="card"><div class="header">KARTU PESERTA UJIAN CBT<br/>SMAN 1 BATUDAA PANTAI</div>
          <table><tr><td width="55" style="font-weight:bold;">Nama</td><td>: ${s.name}</td></tr><tr><td style="font-weight:bold;">Kelas</td><td>: ${s.kelas || '-'}</td></tr>
          <tr><td style="font-weight:bold;">Username</td><td>: <b>${s.username}</b></td></tr><tr><td style="font-weight:bold;">Password</td><td>: <b>${s.password}</b></td></tr></table>
-         <table style="margin-top: 3px;"><tr><td width="50%"><div class="foto">3x4</div></td><td width="50%" class="ttd">Panitia Ujian<br/><br/><br/>________________</td></tr></table></div>`;
+         <table style="margin-top: 2px;"><tr><td width="50%"><div class="foto">2x3</div></td><td width="50%" class="ttd">Panitia Ujian<br/><br/><br/>________________</td></tr></table></div>`;
        if ((idx + 1) % 2 === 0) body += "<div class='clear'></div>";
     });
     const footer = "</div></body></html>";
@@ -578,92 +670,285 @@ export default function Admin() {
     }
   };
 
+  // Navigasi Sidebar Baru (TKA Style)
   const NavItem = ({ id, icon: Icon, label }) => (
-    <button onClick={() => { setActiveTab(id); setIsMobileMenuOpen(false); }} className={`w-full flex items-center justify-center md:justify-start gap-2 p-3 rounded text-sm md:text-base ${activeTab === id ? 'bg-blue-700 font-bold' : 'hover:bg-blue-800'}`}>
-      <Icon size={18}/> <span className="hidden md:inline">{label}</span><span className="md:hidden text-xs">{label.split(' ')[0]}</span>
+    <button onClick={() => { setActiveTab(id); setIsMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 p-4 rounded-xl text-sm font-bold transition-all ${activeTab === id ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100 hover:text-indigo-600'}`}>
+      <Icon size={20}/> <span>{label}</span>
     </button>
   );
 
+  // TAMPILAN PRATINJAU CETAK KARTU
   if (isPrintingCards) {
     return (
       <div className="bg-gray-100 min-h-screen text-black print:bg-white">
         <div className="print:hidden p-4 bg-white flex justify-between items-center shadow-md mb-6 sticky top-0 z-50 border-t-4 border-blue-600">
-          <div><h2 className="text-xl font-bold text-gray-800">Pratinjau Cetak Kartu ({filteredStudents.length} Siswa)</h2></div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-800">Pratinjau Cetak Kartu ({filteredStudents.length} Siswa)</h2>
+            <p className="text-sm text-gray-500">Gunakan Kertas A4. Margin: Default / Minimum.</p>
+          </div>
           <div className="flex gap-3">
              <button onClick={() => window.print()} className="px-6 py-2 bg-blue-600 text-white font-bold rounded shadow hover:bg-blue-700 flex items-center gap-2"><Printer size={18}/> Print / PDF</button>
              <button onClick={() => setIsPrintingCards(false)} className="px-6 py-2 bg-red-600 text-white font-bold rounded shadow hover:bg-red-700 flex items-center gap-2"><X size={18}/> Tutup</button>
           </div>
         </div>
         <div className="p-4 print:p-0 print:m-0 w-full max-w-[210mm] mx-auto bg-white print:bg-transparent shadow-lg print:shadow-none">
-          <div className="grid grid-cols-1 md:grid-cols-2 print:grid-cols-2 gap-3 print:gap-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 print:grid-cols-2 gap-3 print:gap-1.5">
             {filteredStudents.map((s, idx) => (
-               <div key={s.id} className="border-2 border-black p-2 bg-white break-inside-avoid shadow-sm print:shadow-none h-[54mm] flex flex-col justify-between">
+               <div key={s.id} className="border border-black p-1.5 bg-white break-inside-avoid shadow-sm print:shadow-none h-[50mm] flex flex-col justify-between">
                   <div>
-                    <div className="text-center font-bold text-[9px] md:text-[10px] border-b border-black pb-1 mb-1 leading-none uppercase">KARTU PESERTA UJIAN CBT<br/>SMAN 1 BATUDAA PANTAI</div>
-                    <table className="w-full text-[8.5px] md:text-[9px] leading-none mb-1">
+                    <div className="text-center font-bold text-[8.5px] md:text-[9.5px] border-b border-black pb-0.5 mb-0.5 leading-none uppercase">KARTU PESERTA UJIAN CBT<br/>SMAN 1 BATUDAA PANTAI</div>
+                    <table className="w-full text-[8px] md:text-[8.5px] table-fixed" style={{ lineHeight: '1.1' }}>
                       <tbody>
-                        <tr><td className="w-14 font-bold p-0">Nama</td><td className="p-0 truncate">: {s.name}</td></tr>
+                        <tr><td className="w-12 font-bold p-0">Nama</td><td className="p-0 truncate">: {s.name}</td></tr>
                         <tr><td className="font-bold p-0">Kelas</td><td className="p-0 truncate">: {s.kelas || '-'}</td></tr>
                         <tr><td className="font-bold p-0">Username</td><td className="font-mono font-bold text-blue-800 print:text-black p-0 truncate">: {s.username}</td></tr>
                         <tr><td className="font-bold p-0">Password</td><td className="font-mono font-bold text-red-700 print:text-black p-0 truncate">: {s.password}</td></tr>
                       </tbody>
                     </table>
                   </div>
-                  <div className="flex justify-between items-end mt-auto">
-                     <div className="w-8 h-10 border border-gray-400 flex items-center justify-center text-[7px] text-gray-500 font-bold bg-gray-50">3x4</div>
-                     <div className="text-center text-[8px] md:text-[9px] font-bold leading-tight">Panitia Ujian<br/><br/><br/>__________________</div>
+                  <div className="flex justify-between items-end mt-auto pt-0.5">
+                     <div className="w-6 h-9 border border-gray-400 flex items-center justify-center text-[6px] text-gray-500 font-bold bg-gray-50">2x3</div>
+                     <div className="text-center text-[7px] md:text-[8px] font-bold leading-none">Panitia Ujian<br/><br/><br/>__________________</div>
                   </div>
                </div>
             ))}
           </div>
+          {filteredStudents.length === 0 && <p className="text-center text-red-500 font-bold py-10">Data siswa tidak ditemukan.</p>}
         </div>
       </div>
     );
   }
 
+  // TAMPILAN ADMIN UTAMA
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-gray-100 font-sans print:bg-white">
-      {/* SIDEBAR ADMIN */}
-      <div className="w-full md:w-64 bg-blue-900 text-white p-4 md:p-6 shrink-0 flex flex-col md:h-screen md:sticky top-0 z-20 shadow-md print:hidden">
-        <div className="flex justify-between items-center mb-0 md:mb-8">
-          <div><h1 className="text-xl md:text-2xl font-bold">Portal Guru</h1><p className="text-xs text-blue-300 font-medium">Masuk: {loggedInUser.name} {loggedInUser.role === 'admin' ? '(Admin)' : ''}</p></div>
-          <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="md:hidden p-2 text-white bg-blue-800 rounded">{isMobileMenuOpen ? <X size={24}/> : <Menu size={24}/>}</button>
+    <div className="min-h-screen flex flex-col md:flex-row bg-[#f4f7fb] font-sans print:bg-white">
+      
+      {/* HEADER MOBILE */}
+      <div className="md:hidden bg-white p-4 flex justify-between items-center border-b shadow-sm sticky top-0 z-30 print:hidden">
+         <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-inner"><ShieldCheck className="text-white" size={20}/></div>
+            <h1 className="font-black text-gray-800">CBT Admin</h1>
+         </div>
+         <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 text-gray-600 bg-gray-100 rounded-lg">{isMobileMenuOpen ? <X size={20}/> : <Menu size={20}/>}</button>
+      </div>
+
+      {/* SIDEBAR TKA STYLE */}
+      <div className={`w-full md:w-64 bg-white border-r shadow-sm shrink-0 flex-col h-screen md:sticky md:top-0 print:hidden transition-all duration-300 absolute md:relative z-20 ${isMobileMenuOpen ? 'flex left-0' : 'hidden md:flex'}`}>
+        <div className="p-6 border-b hidden md:block">
+          <div className="flex items-center gap-3">
+             <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-inner"><ShieldCheck className="text-white" size={24}/></div>
+             <div><h1 className="text-base font-black text-gray-800 leading-tight">Portal Ujian</h1><p className="text-[10px] text-gray-500 font-bold uppercase">SMAN 1 Batudaa Pantai</p></div>
+          </div>
         </div>
-        <nav className={`${isMobileMenuOpen ? 'grid' : 'hidden'} ${loggedInUser.role === 'admin' ? 'grid-cols-5' : 'grid-cols-2'} md:grid-cols-1 gap-1 mt-4 md:mt-0 md:flex md:flex-col md:space-y-2 flex-1 transition-all`}>
-          <NavItem id="hasil" icon={Users} label="Hasil Ujian" />
-          <NavItem id="soal" icon={PlusCircle} label="Bank Soal" />
-          {loggedInUser.role === 'admin' && ( 
+        
+        <div className="p-4 flex-1 space-y-2 overflow-y-auto">
+          <NavItem id="jadwal" icon={Key} label="Jadwal & Token" />
+          <NavItem id="pantau" icon={Activity} label="Pantau Peserta" />
+          <NavItem id="hasil" icon={BarChart2} label="Analisis Hasil" />
+          {loggedInUser.role === 'admin' && (
             <>
-              <NavItem id="ujian" icon={FileText} label="Manajemen Ujian" />
-              <NavItem id="siswa" icon={UserPlus} label="Akun Siswa" />
+              <NavItem id="soal" icon={FileText} label="Bank Soal" />
+              <NavItem id="siswa" icon={Users} label="Akun Siswa" />
               <NavItem id="guru" icon={ShieldCheck} label="Akun Guru" />
-            </> 
+            </>
           )}
-        </nav>
-        <div className="mt-4 md:mt-auto pt-4 border-t border-blue-700">
-          <button onClick={() => { localStorage.removeItem('user'); navigate('/'); }} className="w-full p-3 bg-red-600 rounded-lg hover:bg-red-700 font-bold flex items-center justify-center gap-2 shadow-lg transition-colors mt-2"><LogOut size={20}/> LOGOUT</button>
+        </div>
+
+        <div className="p-4 border-t bg-gray-50">
+           <div className="mb-3 px-2 hidden md:block">
+              <p className="font-bold text-sm text-gray-800">{loggedInUser.name}</p>
+              <p className="text-xs text-gray-500 font-semibold">{loggedInUser.role === 'admin' ? 'Administrator' : 'Pengawas/Guru'}</p>
+           </div>
+           <button onClick={() => { localStorage.removeItem('user'); navigate('/'); }} className="w-full p-2.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 font-bold flex items-center justify-center gap-2 transition-colors border border-red-200"><LogOut size={16}/> Keluar</button>
         </div>
       </div>
 
-      <div className="flex-1 p-4 md:p-8 overflow-y-auto print:p-0 print:overflow-visible">
+      <div className="flex-1 p-4 md:p-10 overflow-y-auto print:p-0 print:overflow-visible">
         
+        {/* === TAB 1: JADWAL & TOKEN (NEW) === */}
+        {activeTab === 'jadwal' && (
+          <div className="max-w-5xl mx-auto space-y-6">
+            <div>
+               <h2 className="text-2xl font-black text-gray-800">Jadwal & Token Ujian</h2>
+               <p className="text-gray-500 font-medium text-sm md:text-base">Token berupa 6 digit angka dan akan diperbarui otomatis setiap 15 menit.</p>
+            </div>
+
+            {/* Tombol Buat Jadwal Baru */}
+            {loggedInUser.role === 'admin' && (
+              <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-gray-200">
+                <div className="flex justify-between items-center mb-4 border-b pb-3">
+                  <h3 className="text-lg font-bold text-gray-800">{isEditingExam ? 'Edit Jadwal Ujian' : 'Buat Sesi Ujian Baru'}</h3>
+                  {isEditingExam && <button onClick={batalkanEditUjian} className="text-red-500 font-bold text-sm">Batal</button>}
+                </div>
+                <form onSubmit={simpanUjian} className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Mata Pelajaran / Judul</label>
+                    <input required type="text" className="w-full p-2.5 border rounded-lg bg-gray-50 focus:bg-white outline-none focus:border-indigo-500 font-medium" value={newExamTitle} onChange={(e) => setNewExamTitle(e.target.value)} />
+                  </div>
+                  <div className="md:col-span-1">
+                    <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Guru Pengampu</label>
+                    <select required className="w-full p-2.5 border rounded-lg bg-gray-50 outline-none focus:border-indigo-500 font-medium" value={newExamGuruId} onChange={(e) => setNewExamGuruId(e.target.value)}>
+                      <option value="">- Pilih Guru -</option><option value={loggedInUser.id}>Admin (Saya)</option>
+                      {teachers.filter(t => t.role === 'guru').map(t => <option key={t.id} value={String(t.id)}>{t.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="md:col-span-1">
+                    <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Target Kelas</label>
+                    <input type="text" placeholder="Cth: XII IPA 1" className="w-full p-2.5 border rounded-lg bg-gray-50 outline-none focus:border-indigo-500 font-medium" value={newExamKelas} onChange={(e) => setNewExamKelas(e.target.value)} />
+                  </div>
+                  
+                  <div className="md:col-span-1">
+                    <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Tanggal Ujian</label>
+                    <input type="date" className="w-full p-2.5 border rounded-lg bg-gray-50 outline-none font-medium" value={newExamDate} onChange={(e) => setNewExamDate(e.target.value)} />
+                  </div>
+                  <div className="md:col-span-1">
+                    <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Jam Mulai</label>
+                    <input type="time" className="w-full p-2.5 border rounded-lg bg-gray-50 outline-none font-medium" value={newExamStart} onChange={(e) => setNewExamStart(e.target.value)} />
+                  </div>
+                  <div className="md:col-span-1">
+                    <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Jam Selesai</label>
+                    <input type="time" className="w-full p-2.5 border rounded-lg bg-gray-50 outline-none font-medium" value={newExamEnd} onChange={(e) => setNewExamEnd(e.target.value)} />
+                  </div>
+                  <div className="md:col-span-1">
+                    <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Durasi Pengerjaan</label>
+                    <div className="flex border rounded-lg overflow-hidden bg-gray-50"><input required type="number" className="w-full p-2.5 bg-transparent outline-none font-medium text-center" value={newExamDuration} onChange={(e) => setNewExamDuration(e.target.value)} /><span className="bg-gray-200 px-3 flex items-center text-xs font-bold text-gray-600">Mnt</span></div>
+                  </div>
+                  
+                  <div className="md:col-span-4 flex justify-end mt-2">
+                     <button type="submit" className="w-full md:w-auto px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shadow-md transition-colors">{isEditingExam ? 'Simpan Perubahan' : 'Generate Sesi Ujian'}</button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* List Token & Card Ujian */}
+            <div className="space-y-4">
+               {exams.map(ex => (
+                 <div key={ex.id} className={`bg-white border rounded-2xl p-5 md:p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all ${!ex.is_active ? 'opacity-60 grayscale' : 'hover:border-indigo-300 hover:shadow-md'}`}>
+                    
+                    <div className="flex-1">
+                       <div className="flex items-center gap-3 mb-1">
+                          <h3 className="text-xl font-black text-gray-800">{ex.title}</h3>
+                          {getStatusText(ex)}
+                       </div>
+                       <p className="text-sm text-gray-500 font-medium flex flex-wrap items-center gap-1.5"><Users size={14}/> Kelas: {ex.target_kelas || 'Semua'} <span className="mx-2 hidden md:inline">•</span><br className="md:hidden"/> <Calendar size={14}/> {ex.schedule_date || '-'} <span className="mx-2">•</span> <ClockIcon size={14}/> Sesi: {ex.start_time || '--:--'} - {ex.end_time || '--:--'} ({ex.duration_minutes} Mnt)</p>
+                       
+                       <div className="flex flex-wrap gap-2 mt-4">
+                          {loggedInUser.role === 'admin' && (
+                             <>
+                               <button onClick={() => handleEditExamClick(ex)} className="px-3 py-1.5 bg-gray-100 text-gray-700 font-bold rounded border hover:bg-gray-200 text-xs flex items-center gap-1"><Edit size={14}/> Edit</button>
+                               <button onClick={() => hapusUjian(ex.id)} className="px-3 py-1.5 bg-red-50 text-red-600 font-bold rounded border border-red-200 hover:bg-red-100 text-xs flex items-center gap-1"><Trash2 size={14}/> Hapus</button>
+                             </>
+                          )}
+                          <button onClick={() => toggleStatusUjian(ex.id, ex.is_active)} className={`px-3 py-1.5 font-bold rounded border text-xs flex items-center gap-1 ${ex.is_active ? 'bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100' : 'bg-green-50 text-green-600 border-green-200 hover:bg-green-100'}`}>
+                             <XSquare size={14}/> {ex.is_active ? 'Tutup Ujian' : 'Buka Ujian'}
+                          </button>
+                          <button onClick={() => { setActiveProctorExam(ex.id); setActiveTab('pantau'); setIsMobileMenuOpen(false); }} className="px-4 py-1.5 bg-indigo-100 text-indigo-700 font-bold rounded-lg border border-indigo-200 hover:bg-indigo-200 text-xs flex items-center gap-1 ml-auto md:ml-4"><Activity size={16}/> Live Pantau</button>
+                       </div>
+                    </div>
+
+                    <div className="shrink-0 flex flex-col items-center bg-indigo-50 border border-indigo-100 p-4 rounded-xl min-w-[200px]">
+                       <span className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-1">Token Ujian</span>
+                       {ex.is_active ? (
+                          <>
+                            <span className="text-3xl md:text-4xl font-black font-mono text-indigo-900 tracking-[0.2em] leading-none mb-2">{ex.token}</span>
+                            <span className="text-xs font-bold text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full flex items-center gap-1"><RefreshCw size={12} className={formatCountdown(ex.token_expires_at) === '00:00' ? 'animate-spin' : ''}/> Ganti dalam {formatCountdown(ex.token_expires_at)}</span>
+                            <button onClick={() => forceRotateToken(ex.id)} className="text-[10px] text-indigo-500 font-bold underline mt-2 hover:text-indigo-700">Ganti Sekarang</button>
+                          </>
+                       ) : (
+                          <span className="text-xl font-bold text-gray-400 mt-2">DITUTUP</span>
+                       )}
+                    </div>
+                 </div>
+               ))}
+               {exams.length === 0 && <p className="text-center p-10 text-gray-500 font-bold">Belum ada jadwal ujian.</p>}
+            </div>
+          </div>
+        )}
+
+        {/* === TAB 2: PANTAU PESERTA (LIVE PROKTOR) === */}
+        {activeTab === 'pantau' && (
+          <div className="max-w-5xl mx-auto space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+               <div>
+                 <h2 className="text-2xl font-black text-gray-800 flex items-center gap-2"><Activity className="text-indigo-600"/> Live Proktor</h2>
+                 <p className="text-gray-500 font-medium">Pantau aktivitas ujian siswa secara real-time.</p>
+               </div>
+               <button onClick={() => { if(activeProctorExam) fetchLiveSessions(activeProctorExam); }} className="w-full md:w-auto px-4 py-2 bg-white border shadow-sm rounded-lg font-bold text-sm text-gray-700 flex items-center justify-center gap-2 hover:bg-gray-50"><RefreshCw size={16}/> Segarkan Data</button>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
+               <label className="block text-sm font-bold text-gray-700 mb-2">Pilih Ujian yang Sedang Berlangsung:</label>
+               <select value={activeProctorExam || ''} onChange={(e) => setActiveProctorExam(e.target.value)} className="w-full p-3 border-2 border-indigo-200 rounded-xl outline-none focus:border-indigo-500 font-bold text-indigo-900 bg-indigo-50 cursor-pointer text-base md:text-lg">
+                 <option value="">-- Pilih Mata Pelajaran --</option>
+                 {exams.map(ex => <option key={ex.id} value={ex.id}>{ex.title} (Kelas: {ex.target_kelas || 'Semua'})</option>)}
+               </select>
+            </div>
+
+            {activeProctorExam && (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="p-4 bg-gray-50 border-b flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                   <h3 className="font-bold text-gray-800">Daftar Peserta Login ({liveSessions.length})</h3>
+                   <div className="flex flex-wrap gap-3 md:gap-4 text-xs font-bold">
+                     <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-green-500"></div> Mengerjakan</span>
+                     <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-blue-500"></div> Selesai</span>
+                     <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-red-500"></div> Offline/Keluar</span>
+                   </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm whitespace-nowrap">
+                    <thead className="bg-gray-100 text-gray-600 font-bold uppercase text-xs tracking-wider">
+                      <tr><th className="p-4">Nama Siswa</th><th className="p-4">Kelas</th><th className="p-4 text-center">Status</th><th className="p-4 text-center">Posisi Soal</th><th className="p-4 text-right">Aktivitas Terakhir</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {liveSessions.map(sess => {
+                        const isOffline = (new Date().getTime() - new Date(sess.last_active).getTime()) > 30000; 
+                        const isDone = sess.status === 'selesai';
+                        
+                        let dotColor = 'bg-green-500 animate-pulse'; let statusLabel = 'Sedang Mengerjakan';
+                        if (isDone) { dotColor = 'bg-blue-500'; statusLabel = 'Telah Selesai'; }
+                        else if (isOffline) { dotColor = 'bg-red-500'; statusLabel = 'Offline / Terputus'; }
+
+                        return (
+                          <tr key={sess.id} className="hover:bg-indigo-50/30 transition-colors">
+                            <td className="p-4 font-bold text-gray-800">{sess.users?.name} <span className="block text-[10px] text-gray-400 font-mono font-normal">{sess.users?.username}</span></td>
+                            <td className="p-4 text-gray-600 font-medium">{sess.users?.kelas || '-'}</td>
+                            <td className="p-4">
+                               <div className="flex items-center justify-center gap-2 border px-3 py-1 rounded-full bg-white shadow-sm w-fit mx-auto">
+                                  <div className={`w-2.5 h-2.5 rounded-full ${dotColor}`}></div> <span className="text-xs font-bold text-gray-700">{statusLabel}</span>
+                               </div>
+                            </td>
+                            <td className="p-4 text-center font-black text-indigo-600">{isDone ? '-' : `No. ${sess.current_question_index + 1}`}</td>
+                            <td className="p-4 text-right text-xs text-gray-500 font-medium">{new Date(sess.last_active).toLocaleTimeString()}</td>
+                          </tr>
+                        );
+                      })}
+                      {liveSessions.length === 0 && <tr><td colSpan="5" className="p-10 text-center text-gray-400 font-bold italic">Belum ada siswa yang masuk (login) ke ujian ini.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* === TAB HASIL === */}
         {activeTab === 'hasil' && (
           <div className="space-y-6 print:space-y-0">
             <div className="bg-white p-4 md:p-6 rounded-lg shadow print:shadow-none print:p-0">
               
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b border-gray-100 pb-4 print:hidden">
-                <h2 className="text-xl md:text-2xl font-bold text-gray-800 border-l-4 border-blue-600 pl-3">Hasil Ujian</h2>
+                <h2 className="text-xl md:text-2xl font-bold text-gray-800 border-l-4 border-indigo-600 pl-3">Hasil Ujian</h2>
                 <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-                  <select value={activeExamId ? String(activeExamId) : ''} onChange={(e) => { const s = exams.find(x => String(x.id) === e.target.value); if (s) changeActiveExam(s.id, s.token); }} className="p-2 bg-blue-50 border border-blue-300 rounded-lg text-blue-900 font-bold cursor-pointer outline-none focus:ring-2 focus:ring-blue-500 shadow-sm flex-1 md:flex-none">
+                  <select value={activeExamId ? String(activeExamId) : ''} onChange={(e) => { const s = exams.find(x => String(x.id) === e.target.value); if (s) changeActiveExam(s.id, s.token); }} className="p-2 bg-indigo-50 border border-indigo-300 rounded-lg text-indigo-900 font-bold cursor-pointer outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm flex-1 md:flex-none">
                     {exams.length === 0 && <option value="">Belum ada ujian</option>}
-                    {exams.map(ex => (<option key={ex.id} value={String(ex.id)}>{ex.title} ({ex.token})</option>))}
+                    {exams.map(ex => (<option key={ex.id} value={String(ex.id)}>{ex.title} ({ex.target_kelas || 'Semua'})</option>))}
                   </select>
                   <button onClick={() => changeActiveExam(activeExamId, token)} className="px-3 py-2 bg-gray-200 text-gray-800 rounded font-bold hover:bg-gray-300 text-sm">Refresh</button>
                   <button onClick={() => setShowAnalisisKelas(!showAnalisisKelas)} className="px-3 py-2 bg-purple-100 text-purple-800 rounded font-bold hover:bg-purple-200 flex items-center gap-1 text-sm"><BarChart2 size={16}/> Analisis Klasikal</button>
                   
                   <button onClick={() => window.print()} className="px-3 py-2 bg-green-600 text-white rounded font-bold hover:bg-green-700 flex items-center gap-1 text-sm"><Printer size={16}/> Cetak PDF</button>
-                  <button onClick={unduhLaporanKlasikalWord} className="px-3 py-2 bg-blue-800 text-white rounded font-bold hover:bg-blue-900 flex items-center gap-1 text-sm"><FileText size={16}/> Ekspor Word</button>
+                  <button onClick={unduhLaporanKlasikalWord} className="px-3 py-2 bg-indigo-800 text-white rounded font-bold hover:bg-indigo-900 flex items-center gap-1 text-sm"><FileText size={16}/> Ekspor Word</button>
                 </div>
               </div>
 
@@ -738,7 +1023,7 @@ export default function Admin() {
                           <div key={q.id} className="p-5 bg-white border rounded-xl shadow-sm print:shadow-none print:border-black print:break-inside-avoid">
                             <div className="flex justify-between items-center mb-4 border-b pb-3 print:border-black">
                               <span className="font-bold text-lg print:text-base">Soal No. {idx + 1} <span className="text-sm font-normal text-gray-500 print:text-gray-800">({q.type} - Bobot: {maxScore})</span></span>
-                              <span className={`text-xs font-bold px-3 py-1 rounded-full print:border print:border-black ${q.type === 'U' ? 'bg-gray-100 text-gray-600' : 'bg-blue-100 text-blue-800'}`}>{q.type === 'U' ? 'Manual Check' : 'Auto-Grade'}</span>
+                              <span className={`text-xs font-bold px-3 py-1 rounded-full print:border print:border-black ${q.type === 'U' ? 'bg-gray-100 text-gray-600' : 'bg-indigo-100 text-indigo-800'}`}>{q.type === 'U' ? 'Manual Check' : 'Auto-Grade'}</span>
                             </div>
                             
                             {q.type === 'U' ? (
@@ -789,9 +1074,9 @@ export default function Admin() {
                       <tr key={res.id} className="border-b hover:bg-gray-50 transition-colors print:border-black">
                         <td className="p-2 md:p-4 font-semibold text-gray-800 print:border print:border-black print:text-black">{res.users?.name} <div className="text-xs text-gray-500 md:hidden">{res.users?.kelas}</div></td>
                         <td className="p-2 md:p-4 hidden md:table-cell text-gray-600 print:border print:border-black print:text-black">{res.users?.kelas || '-'}</td>
-                        <td className="p-2 md:p-4 text-center font-bold text-xl md:text-2xl text-blue-600 print:border print:border-black print:text-black print:text-lg">{res.score}</td>
+                        <td className="p-2 md:p-4 text-center font-bold text-xl md:text-2xl text-indigo-600 print:border print:border-black print:text-black print:text-lg">{res.score}</td>
                         <td className="p-2 md:p-4 text-right flex justify-end gap-1 md:gap-2 items-center print:hidden">
-                          <button onClick={() => setSelectedResult(res)} className="px-2 py-1.5 md:px-4 md:py-2 bg-blue-600 text-white font-bold rounded shadow hover:bg-blue-700 text-xs md:text-sm">Analisis Rinci</button>
+                          <button onClick={() => setSelectedResult(res)} className="px-2 py-1.5 md:px-4 md:py-2 bg-indigo-600 text-white font-bold rounded shadow hover:bg-indigo-700 text-xs md:text-sm">Analisis Rinci</button>
                           <button onClick={() => hapusHasilUjian(res.id, res.users?.name)} className="p-1.5 md:p-2 bg-red-100 text-red-600 rounded hover:bg-red-200" title="Hapus Hasil"><Trash2 size={16}/></button>
                         </td>
                       </tr>
@@ -813,7 +1098,7 @@ export default function Admin() {
                 <h2 className="text-xl md:text-2xl font-bold text-gray-800">Evaluasi: {selectedResult.users?.name}</h2>
                 <div className="flex gap-2 items-center">
                   <button onClick={() => window.print()} className="px-4 py-2 bg-green-600 text-white font-bold rounded shadow hover:bg-green-700 flex items-center gap-2"><Printer size={16}/> Cetak</button>
-                  <button onClick={() => unduhAnalisisIndividuWord(selectedResult)} className="px-4 py-2 bg-blue-800 text-white font-bold rounded shadow hover:bg-blue-900 flex items-center gap-2"><FileText size={16}/> Ekspor Word</button>
+                  <button onClick={() => unduhAnalisisIndividuWord(selectedResult)} className="px-4 py-2 bg-indigo-800 text-white font-bold rounded shadow hover:bg-indigo-900 flex items-center gap-2"><FileText size={16}/> Ekspor Word</button>
                   <button onClick={() => setSelectedResult(null)} className="ml-2 text-red-500 hover:bg-red-50 p-2 rounded-full font-bold"><X size={24}/></button>
                 </div>
               </div>
@@ -915,7 +1200,7 @@ export default function Admin() {
                         </div>
                         <div>
                           <p className="text-gray-600 mb-1 font-bold print:text-black">{q.type === 'U' ? 'Rubrik / Referensi Guru:' : 'Kunci Benar:'}</p>
-                          <p className="font-medium text-blue-700 break-words print:text-black">
+                          <p className="font-medium text-indigo-700 break-words print:text-black">
                             {keyStr}
                           </p>
                         </div>
@@ -931,54 +1216,46 @@ export default function Admin() {
         {/* === TAB BANK SOAL === */}
         {activeTab === 'soal' && (
           <div className="max-w-4xl mx-auto space-y-6 md:space-y-8 print:hidden">
-            <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-5 md:p-6 rounded-lg shadow-sm border border-blue-200">
+            <div className="bg-gradient-to-r from-indigo-50 to-indigo-100 p-5 md:p-6 rounded-2xl shadow-sm border border-indigo-200">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div className="w-full flex-1">
-                  <label className="text-sm font-bold text-blue-800 block mb-2">Pilih Token & Kelola Soal:</label>
-                  <select value={activeExamId ? String(activeExamId) : ''} onChange={(e) => { const s = exams.find(x => String(x.id) === e.target.value); if (s) changeActiveExam(s.id, s.token); }} className="w-full p-3 bg-white border-2 border-blue-300 rounded-lg text-blue-900 font-black text-lg cursor-pointer outline-none focus:border-blue-600 shadow-sm transition-colors">
-                    {exams.length === 0 && <option value="">Minta Admin membuatkan Token Ujian</option>}
-                    {exams.map(ex => (<option key={ex.id} value={String(ex.id)}>{ex.title} - Token: {ex.token}</option>))}
+                  <label className="text-sm font-bold text-indigo-900 block mb-2">Pilih Bank Soal (Mata Pelajaran):</label>
+                  <select value={activeExamId ? String(activeExamId) : ''} onChange={(e) => { const s = exams.find(x => String(x.id) === e.target.value); if (s) changeActiveExam(s.id, s.token); }} className="w-full p-3 bg-white border-2 border-indigo-300 rounded-xl text-indigo-900 font-black text-lg cursor-pointer outline-none focus:border-indigo-600 shadow-sm transition-colors">
+                    {exams.length === 0 && <option value="">Buat Jadwal Ujian Dulu</option>}
+                    {exams.map(ex => (<option key={ex.id} value={String(ex.id)}>{ex.title} (Kelas {ex.target_kelas || 'Semua'})</option>))}
                   </select>
-                  <p className="text-sm text-blue-800 mt-2">Total Soal Tersimpan: <strong>{questions.length}</strong> butir</p>
-                </div>
-                <div className="flex items-center gap-3 w-full md:w-auto p-4 bg-white rounded-lg shadow-sm border border-gray-200">
-                  <label className="text-sm font-bold text-gray-700 whitespace-nowrap">Durasi Ujian:</label>
-                  <div className="flex items-center border rounded overflow-hidden flex-1 md:flex-none">
-                    <input type="number" min="10" className="w-16 md:w-20 p-2 text-center focus:outline-none font-bold text-blue-900" value={examDuration} onChange={(e) => setExamDuration(e.target.value)} />
-                    <span className="bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-600 border-l">Menit</span>
-                  </div>
-                  <button onClick={updateDurasiUjian} className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-blue-700 shadow">Update</button>
+                  <p className="text-sm text-indigo-800 mt-2">Total Soal Tersimpan: <strong>{questions.length}</strong> butir</p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white p-5 md:p-6 rounded-lg shadow border-t-4 border-green-500">
-              <h2 className="text-lg md:text-xl font-bold mb-2 flex items-center gap-2"><Upload className="text-green-600"/> Upload Soal Teks via Excel (CSV)</h2>
+            <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-gray-200">
+              <h2 className="text-lg md:text-xl font-bold mb-2 flex items-center gap-2"><Upload className="text-green-600"/> Upload Soal Cepat (CSV/Excel)</h2>
               <div className="flex flex-col md:flex-row gap-3 mt-4">
-                <button onClick={unduhTemplateSoalCSV} className="flex items-center justify-center gap-2 px-4 py-2 bg-green-100 text-green-800 font-bold rounded hover:bg-green-200 transition-colors text-sm border border-green-300">
+                <button onClick={unduhTemplateSoalCSV} className="flex items-center justify-center gap-2 px-4 py-2 bg-green-50 text-green-700 font-bold rounded-lg hover:bg-green-100 border border-green-200 text-sm">
                   <Download size={16}/> Unduh Template CSV
                 </button>
-                <div className="flex-1 flex items-center bg-gray-50 border border-gray-300 rounded p-1">
-                  <label className="w-full flex items-center justify-center gap-2 cursor-pointer bg-white px-4 py-2 rounded border border-dashed border-gray-400 hover:bg-gray-100">
+                <div className="flex-1 flex items-center">
+                  <label className="w-full flex items-center justify-center gap-2 cursor-pointer bg-white px-4 py-2 rounded-lg border border-dashed border-gray-400 hover:bg-gray-50">
                     <Upload size={16} className="text-gray-500"/>
-                    <span className="text-sm font-bold text-gray-600">{isUploadingSoalCSV ? 'Memproses...' : 'Upload File CSV'}</span>
+                    <span className="text-sm font-bold text-gray-600">{isUploadingSoalCSV ? 'Memproses...' : 'Pilih File CSV'}</span>
                     <input type="file" accept=".csv" onChange={handleUploadSoalCSV} disabled={isUploadingSoalCSV} className="hidden" />
                   </label>
                 </div>
               </div>
             </div>
 
-            <div className={`bg-white p-5 md:p-6 rounded-lg shadow border-t-4 ${isEditing ? 'border-yellow-500' : 'border-blue-600'}`}>
+            <div className={`bg-white p-5 md:p-6 rounded-2xl shadow-sm border ${isEditing ? 'border-yellow-400' : 'border-gray-200'}`}>
               <div className="flex justify-between items-center mb-6 border-b pb-3">
-                <h2 className="text-lg md:text-xl font-bold text-gray-800">{isEditing ? 'Edit Soal Terpilih' : 'Ketik Soal Manual (Teks & Gambar)'}</h2>
-                {isEditing && <button type="button" onClick={resetForm} className="text-sm font-bold text-gray-500 hover:text-red-500 underline">Batal Edit</button>}
+                <h2 className="text-lg md:text-xl font-bold text-gray-800">{isEditing ? 'Edit Soal Terpilih' : 'Ketik Soal Manual (Teks, Gambar, Rumus)'}</h2>
+                {isEditing && <button type="button" onClick={resetForm} className="text-sm font-bold text-red-500 hover:text-red-700">Batal Edit</button>}
               </div>
 
               <form onSubmit={handleSimpanSoal} className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block font-bold mb-2 text-sm md:text-base text-gray-700">Tipe Pertanyaan</label>
-                    <select className="w-full p-2 md:p-3 border-2 rounded-lg focus:border-blue-500 focus:outline-none text-sm md:text-base bg-gray-50" value={tipeSoal} onChange={(e) => setTipeSoal(e.target.value)}>
+                    <label className="block font-bold mb-2 text-sm text-gray-700">Tipe Pertanyaan</label>
+                    <select className="w-full p-3 border rounded-xl focus:border-indigo-500 outline-none text-sm bg-gray-50 font-medium" value={tipeSoal} onChange={(e) => setTipeSoal(e.target.value)}>
                       <option value="PG">Pilihan Ganda (1 Jawaban)</option>
                       <option value="PGK">Pilihan Ganda Kompleks (Banyak Jawaban)</option>
                       <option value="BS">Benar / Salah (3 Pernyataan)</option>
@@ -988,54 +1265,54 @@ export default function Admin() {
                     </select>
                   </div>
                   <div>
-                    <label className="block font-bold mb-2 text-sm md:text-base text-blue-800">Bobot Poin Soal Ini</label>
-                    <input type="number" min="1" required className="w-full p-2 md:p-3 border-2 border-blue-300 rounded-lg focus:border-blue-500 focus:outline-none text-sm md:text-base bg-blue-50 font-bold" value={bobotSoal} onChange={(e) => setBobotSoal(e.target.value)} placeholder="Contoh: 1, 2, atau 5"/>
+                    <label className="block font-bold mb-2 text-sm text-indigo-800">Bobot Poin Soal</label>
+                    <input type="number" min="1" required className="w-full p-3 border border-indigo-200 rounded-xl focus:border-indigo-500 outline-none text-sm bg-indigo-50 font-bold" value={bobotSoal} onChange={(e) => setBobotSoal(e.target.value)} placeholder="Contoh: 1, 2, atau 5"/>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block font-bold mb-2 text-sm md:text-base text-gray-700">Stimulus / Pertanyaan (Klik icon gambar untuk menyisipkan gambar)</label>
-                  <div className="border-2 rounded-lg overflow-hidden"><JoditEditor ref={editor} value={soalText} config={editorConfig} onBlur={newContent => setSoalText(newContent)} /></div>
+                  <label className="block font-bold mb-2 text-sm text-gray-700">Stimulus / Pertanyaan Inti</label>
+                  <div className="border rounded-xl overflow-hidden"><JoditEditor ref={editor} value={soalText} config={editorConfig} onBlur={newContent => setSoalText(newContent)} /></div>
                 </div>
                 
                 {tipeSoal === 'PG' && (
-                  <div className="space-y-3 bg-gray-50 p-3 md:p-5 rounded-lg border-2 border-gray-200 text-sm md:text-base">
-                    <label className="block font-bold mb-3 text-blue-900 border-b pb-2">Ketik Opsi & Pilih 1 Kunci Jawaban</label>
+                  <div className="space-y-3 bg-gray-50 p-4 md:p-5 rounded-xl border border-gray-200">
+                    <label className="block font-bold mb-3 text-indigo-900 border-b pb-2 text-sm">Ketik Opsi & Pilih 1 Kunci Jawaban (Bisa copas menurun dari Word)</label>
                     {opsiPG.map((opsi, idx) => (
                       <div key={idx} className="flex gap-2 md:gap-3 items-center">
-                        <input type="radio" name="kunciPG" checked={kunciPG === idx} onChange={() => setKunciPG(idx)} className="w-4 h-4 md:w-5 md:h-5 accent-blue-600 shrink-0 cursor-pointer"/>
-                        <span className="font-black w-5 md:w-6 text-gray-700">{String.fromCharCode(65 + idx)}.</span>
-                        <input required type="text" className="flex-1 p-3 border rounded-lg focus:border-blue-500 focus:outline-none" value={opsi} onPaste={(e) => handleSmartPaste(e, idx, setOpsiPG, opsiPG)} onChange={(e) => { const newOpsi = [...opsiPG]; newOpsi[idx] = e.target.value; setOpsiPG(newOpsi); }} placeholder="Ketik pilihan jawaban... (Bisa paste menurun)"/>
+                        <input type="radio" name="kunciPG" checked={kunciPG === idx} onChange={() => setKunciPG(idx)} className="w-5 h-5 accent-indigo-600 shrink-0 cursor-pointer"/>
+                        <span className="font-black w-6 text-gray-700">{String.fromCharCode(65 + idx)}.</span>
+                        <input required type="text" className="flex-1 p-2.5 border rounded-lg focus:border-indigo-500 outline-none text-sm" value={opsi} onPaste={(e) => handleSmartPaste(e, idx, setOpsiPG, opsiPG)} onChange={(e) => { const newOpsi = [...opsiPG]; newOpsi[idx] = e.target.value; setOpsiPG(newOpsi); }} placeholder="Pilihan jawaban..."/>
                       </div>
                     ))}
                   </div>
                 )}
                 
                 {tipeSoal === 'PGK' && (
-                  <div className="space-y-3 bg-gray-50 p-3 md:p-5 rounded-lg border-2 border-gray-200 text-sm md:text-base">
-                    <label className="block font-bold mb-3 text-blue-900 border-b pb-2">Ketik Opsi & Centang Semua Kunci (Maksimal 3)</label>
+                  <div className="space-y-3 bg-gray-50 p-4 md:p-5 rounded-xl border border-gray-200">
+                    <label className="block font-bold mb-3 text-indigo-900 border-b pb-2 text-sm">Ketik Opsi & Centang Semua Kunci (Maksimal 3)</label>
                     {opsiPGK.map((opsi, idx) => (
                       <div key={idx} className="flex gap-2 md:gap-3 items-center">
                         <input type="checkbox" checked={kunciPGK.includes(idx)} onChange={(e) => {
                           if (e.target.checked) { if (kunciPGK.length >= 3) return alert('Maks 3 Jawaban!'); setKunciPGK([...kunciPGK, idx]); } else setKunciPGK(kunciPGK.filter(i => i !== idx));
-                        }} className="w-4 h-4 md:w-5 md:h-5 accent-blue-600 shrink-0 cursor-pointer"/>
-                        <span className="font-black w-5 md:w-6 text-gray-700">{String.fromCharCode(65 + idx)}.</span>
-                        <input required type="text" className="flex-1 p-3 border rounded-lg focus:border-blue-500 focus:outline-none" value={opsi} onPaste={(e) => handleSmartPaste(e, idx, setOpsiPGK, opsiPGK)} onChange={(e) => { const newOpsi = [...opsiPGK]; newOpsi[idx] = e.target.value; setOpsiPGK(newOpsi); }} placeholder="Ketik pilihan jawaban... (Bisa paste menurun)"/>
+                        }} className="w-5 h-5 accent-indigo-600 shrink-0 cursor-pointer"/>
+                        <span className="font-black w-6 text-gray-700">{String.fromCharCode(65 + idx)}.</span>
+                        <input required type="text" className="flex-1 p-2.5 border rounded-lg focus:border-indigo-500 outline-none text-sm" value={opsi} onPaste={(e) => handleSmartPaste(e, idx, setOpsiPGK, opsiPGK)} onChange={(e) => { const newOpsi = [...opsiPGK]; newOpsi[idx] = e.target.value; setOpsiPGK(newOpsi); }} placeholder="Pilihan jawaban..."/>
                       </div>
                     ))}
                   </div>
                 )}
                 
                 {tipeSoal === 'BS' && (
-                  <div className="space-y-4 bg-gray-50 p-3 md:p-5 rounded-lg border-2 border-gray-200 text-sm md:text-base">
-                    <label className="block font-bold mb-3 text-blue-900 border-b pb-2">Ketik 3 Pernyataan & Tentukan Kunci B/S-nya</label>
+                  <div className="space-y-4 bg-gray-50 p-4 md:p-5 rounded-xl border border-gray-200">
+                    <label className="block font-bold mb-3 text-indigo-900 border-b pb-2 text-sm">Ketik 3 Pernyataan & Tentukan Kunci B/S-nya</label>
                     {opsiBS.map((opsi, idx) => (
-                      <div key={idx} className="flex flex-col md:flex-row gap-2 md:gap-3 items-start md:items-center bg-white p-4 border rounded-lg shadow-sm">
+                      <div key={idx} className="flex flex-col md:flex-row gap-3 items-start md:items-center bg-white p-3 border rounded-lg shadow-sm">
                         <span className="font-black text-gray-700">{idx + 1}.</span>
-                        <input required type="text" className="flex-1 p-3 border rounded-lg w-full focus:border-blue-500 focus:outline-none" value={opsi} onPaste={(e) => handleSmartPaste(e, idx, setOpsiBS, opsiBS)} onChange={(e) => { const newOpsi = [...opsiBS]; newOpsi[idx] = e.target.value; setOpsiBS(newOpsi); }} placeholder="Ketik pernyataan di sini..."/>
+                        <input required type="text" className="flex-1 p-2.5 border rounded-lg w-full focus:border-indigo-500 outline-none text-sm" value={opsi} onPaste={(e) => handleSmartPaste(e, idx, setOpsiBS, opsiBS)} onChange={(e) => { const newOpsi = [...opsiBS]; newOpsi[idx] = e.target.value; setOpsiBS(newOpsi); }} placeholder="Ketik pernyataan di sini..."/>
                         <div className="flex gap-4 justify-end w-full md:w-auto mt-2 md:mt-0">
-                          <label className="flex items-center gap-2 font-bold cursor-pointer"><input type="radio" checked={kunciBS[idx] === 'B'} onChange={() => { const newKunci = [...kunciBS]; newKunci[idx] = 'B'; setKunciBS(newKunci); }} className="w-4 h-4 md:w-5 md:h-5 accent-green-600"/> Benar</label>
-                          <label className="flex items-center gap-2 font-bold cursor-pointer"><input type="radio" checked={kunciBS[idx] === 'S'} onChange={() => { const newKunci = [...kunciBS]; newKunci[idx] = 'S'; setKunciBS(newKunci); }} className="w-4 h-4 md:w-5 md:h-5 accent-red-600"/> Salah</label>
+                          <label className="flex items-center gap-2 font-bold cursor-pointer text-sm"><input type="radio" checked={kunciBS[idx] === 'B'} onChange={() => { const newKunci = [...kunciBS]; newKunci[idx] = 'B'; setKunciBS(newKunci); }} className="w-4 h-4 accent-green-600"/> Benar</label>
+                          <label className="flex items-center gap-2 font-bold cursor-pointer text-sm"><input type="radio" checked={kunciBS[idx] === 'S'} onChange={() => { const newKunci = [...kunciBS]; newKunci[idx] = 'S'; setKunciBS(newKunci); }} className="w-4 h-4 accent-red-600"/> Salah</label>
                         </div>
                       </div>
                     ))}
@@ -1043,61 +1320,59 @@ export default function Admin() {
                 )}
 
                 {tipeSoal === 'IS' && (
-                  <div className="space-y-3 bg-gray-50 p-3 md:p-5 rounded-lg border-2 border-gray-200 text-sm md:text-base">
-                    <label className="block font-bold mb-3 text-blue-900 border-b pb-2">Kunci Jawaban Singkat (Pastikan Ejaan Benar)</label>
-                    <input required type="text" className="w-full p-3 border rounded-lg focus:border-blue-500 focus:outline-none" value={kunciIS} onChange={(e) => setKunciIS(e.target.value)} placeholder="Contoh: Jakarta"/>
+                  <div className="space-y-3 bg-gray-50 p-4 md:p-5 rounded-xl border border-gray-200">
+                    <label className="block font-bold mb-2 text-indigo-900 text-sm">Kunci Jawaban Singkat (Pastikan Ejaan Benar)</label>
+                    <input required type="text" className="w-full p-3 border rounded-lg focus:border-indigo-500 outline-none font-medium text-sm" value={kunciIS} onChange={(e) => setKunciIS(e.target.value)} placeholder="Contoh: Jakarta"/>
                   </div>
                 )}
 
                 {tipeSoal === 'U' && (
-                  <div className="space-y-3 bg-gray-50 p-3 md:p-5 rounded-lg border-2 border-gray-200 text-sm md:text-base">
-                    <label className="block font-bold mb-3 text-blue-900 border-b pb-2">Rubrik / Referensi Jawaban (Hanya untuk panduan Guru saat menilai)</label>
-                    <textarea required rows={4} className="w-full p-3 border rounded-lg focus:border-blue-500 focus:outline-none" value={kunciU} onChange={(e) => setKunciU(e.target.value)} placeholder="Ketik panduan jawaban uraian di sini..."/>
+                  <div className="space-y-3 bg-gray-50 p-4 md:p-5 rounded-xl border border-gray-200">
+                    <label className="block font-bold mb-2 text-indigo-900 text-sm">Rubrik / Referensi Jawaban Uraian (Panduan Guru)</label>
+                    <textarea required rows={4} className="w-full p-3 border rounded-lg focus:border-indigo-500 outline-none text-sm" value={kunciU} onChange={(e) => setKunciU(e.target.value)} placeholder="Ketik panduan jawaban uraian di sini..."/>
                   </div>
                 )}
 
                 {tipeSoal === 'M' && (
-                  <div className="space-y-4 bg-gray-50 p-3 md:p-5 rounded-lg border-2 border-gray-200 text-sm md:text-base">
-                    <label className="block font-bold mb-3 text-blue-900 border-b pb-2">Ketik Pasangan Menjodohkan (Premis Kiri ➜ Jawaban Kanan)</label>
+                  <div className="space-y-4 bg-gray-50 p-4 md:p-5 rounded-xl border border-gray-200">
+                    <label className="block font-bold mb-3 text-indigo-900 border-b pb-2 text-sm">Ketik Pasangan Menjodohkan (Premis Kiri ➜ Jawaban Kanan)</label>
                     {pasanganM.map((pair, idx) => (
                       <div key={idx} className="flex flex-col md:flex-row gap-2 md:gap-3 items-start md:items-center">
                         <span className="font-black text-gray-700">{idx + 1}.</span>
-                        <input required type="text" className="flex-1 p-3 border rounded-lg w-full focus:border-blue-500" value={pair.kiri} onChange={(e) => { const newP = [...pasanganM]; newP[idx].kiri = e.target.value; setPasanganM(newP); }} placeholder="Ketik pernyataan/premis..."/>
+                        <input required type="text" className="flex-1 p-2.5 border rounded-lg w-full focus:border-indigo-500 text-sm" value={pair.kiri} onChange={(e) => { const newP = [...pasanganM]; newP[idx].kiri = e.target.value; setPasanganM(newP); }} placeholder="Premis..."/>
                         <span className="font-bold text-gray-500">➜</span>
-                        <input required type="text" className="flex-1 p-3 border rounded-lg w-full focus:border-blue-500" value={pair.kanan} onChange={(e) => { const newP = [...pasanganM]; newP[idx].kanan = e.target.value; setPasanganM(newP); }} placeholder="Ketik pasangan jawabannya..."/>
-                        {pasanganM.length > 2 && (
-                          <button type="button" onClick={() => setPasanganM(pasanganM.filter((_, i) => i !== idx))} className="p-2 text-red-600 hover:bg-red-100 rounded" title="Hapus Pasangan"><Trash2 size={18}/></button>
-                        )}
+                        <input required type="text" className="flex-1 p-2.5 border rounded-lg w-full focus:border-indigo-500 text-sm" value={pair.kanan} onChange={(e) => { const newP = [...pasanganM]; newP[idx].kanan = e.target.value; setPasanganM(newP); }} placeholder="Pasangan..."/>
+                        {pasanganM.length > 2 && <button type="button" onClick={() => setPasanganM(pasanganM.filter((_, i) => i !== idx))} className="p-2 text-red-600 hover:bg-red-100 rounded" title="Hapus"><Trash2 size={16}/></button>}
                       </div>
                     ))}
-                    <button type="button" onClick={() => setPasanganM([...pasanganM, {kiri:'', kanan:''}])} className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-800 font-bold rounded hover:bg-blue-200 text-sm"><PlusCircle size={16}/> Tambah Pasangan</button>
+                    <button type="button" onClick={() => setPasanganM([...pasanganM, {kiri:'', kanan:''}])} className="flex items-center gap-2 px-4 py-2 bg-indigo-100 text-indigo-800 font-bold rounded-lg hover:bg-indigo-200 text-xs"><PlusCircle size={14}/> Tambah Pasangan</button>
                   </div>
                 )}
 
-                <button type="submit" className={`w-full text-white font-bold py-4 rounded-lg shadow-lg ${isEditing ? 'bg-yellow-500 text-yellow-900 hover:bg-yellow-600' : 'bg-blue-600 hover:bg-blue-700'} text-lg`}>
-                  {isEditing ? 'SIMPAN PERUBAHAN SOAL' : 'SIMPAN SOAL KE DATABASE'}
+                <button type="submit" className={`w-full text-white font-bold py-3.5 rounded-xl shadow-md transition-all text-sm ${isEditing ? 'bg-yellow-500 text-yellow-900 hover:bg-yellow-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
+                  {isEditing ? 'SIMPAN PERUBAHAN SOAL' : 'TAMBAHKAN SOAL KE DATABASE'}
                 </button>
               </form>
             </div>
             
-            <div className="bg-white p-4 md:p-6 rounded-lg shadow">
-              <h2 className="text-lg md:text-xl font-bold mb-4 border-b pb-2">Daftar Soal Tersimpan ({questions.length})</h2>
-              {questions.length === 0 ? <p className="text-center py-8 text-gray-500 font-medium">Belum ada soal untuk mata pelajaran ini.</p> : (
+            <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border">
+              <h2 className="text-lg font-bold mb-4 border-b pb-2">Daftar Soal Tersimpan ({questions.length})</h2>
+              {questions.length === 0 ? <p className="text-center py-8 text-gray-500 font-medium text-sm">Belum ada soal.</p> : (
                 <div className="space-y-4">
                   {questions.map((q, idx) => (
-                    <div key={q.id} className="p-4 border-2 border-gray-100 rounded-lg bg-gray-50 hover:border-blue-200 transition-colors">
+                    <div key={q.id} className="p-4 border rounded-xl bg-gray-50 hover:border-indigo-300 transition-colors">
                       <div className="flex justify-between items-start mb-3 border-b border-gray-200 pb-2">
                         <div className="flex items-center gap-3">
-                          <span className="font-black text-lg text-gray-800">No. {idx + 1}</span>
-                          <span className="text-xs font-bold bg-blue-100 text-blue-800 px-2 py-1 rounded">{q.type}</span>
-                          <span className="text-xs font-bold bg-green-100 text-green-800 px-2 py-1 rounded">Bobot: {q.bobot || 1}</span>
+                          <span className="font-black text-gray-800">No. {idx + 1}</span>
+                          <span className="text-xs font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded">{q.type}</span>
+                          <span className="text-xs font-bold bg-green-100 text-green-800 px-2 py-0.5 rounded">Poin: {q.bobot || 1}</span>
                         </div>
                         <div className="flex gap-2">
-                          <button onClick={() => handleEditClick(q)} className="p-2 text-blue-600 hover:bg-blue-100 rounded transition-colors" title="Edit Soal"><Edit size={18}/></button>
-                          <button onClick={() => handleHapusSoal(q.id)} className="p-2 text-red-600 hover:bg-red-100 rounded transition-colors" title="Hapus Soal"><Trash2 size={18}/></button>
+                          <button onClick={() => handleEditClick(q)} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded" title="Edit"><Edit size={16}/></button>
+                          <button onClick={() => handleHapusSoal(q.id)} className="p-1.5 text-red-600 hover:bg-red-100 rounded" title="Hapus"><Trash2 size={16}/></button>
                         </div>
                       </div>
-                      <div className="prose max-w-none text-sm text-gray-700 bg-white p-4 border rounded shadow-sm overflow-x-auto" dangerouslySetInnerHTML={{ __html: q.content }} />
+                      <div className="prose max-w-none text-sm text-gray-700 bg-white p-3 border rounded-lg shadow-sm overflow-x-auto" dangerouslySetInnerHTML={{ __html: q.content }} />
                     </div>
                   ))}
                 </div>
@@ -1106,81 +1381,17 @@ export default function Admin() {
           </div>
         )}
 
-        {/* === TAB UJIAN (HANYA ADMIN) === */}
-        {loggedInUser.role === 'admin' && activeTab === 'ujian' && (
-          <div className="space-y-6 print:hidden">
-            <div className={`bg-white p-5 md:p-6 rounded-lg shadow max-w-2xl border-t-4 ${isEditingExam ? 'border-yellow-500' : 'border-blue-600'}`}>
-              <div className="flex justify-between items-center mb-4 border-b pb-3">
-                <h2 className="text-xl font-bold">{isEditingExam ? 'Edit Data Ujian' : 'Generasi Token Ujian Baru'}</h2>
-                {isEditingExam && <button type="button" onClick={batalkanEditUjian} className="text-sm font-bold text-gray-500 hover:text-red-500 underline">Batal Edit</button>}
-              </div>
-              <form onSubmit={simpanUjian} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">Mata Pelajaran (Judul Ujian)</label>
-                  <input required type="text" className="w-full p-3 border rounded-lg focus:border-blue-500 focus:outline-none bg-gray-50 focus:bg-white transition-colors" placeholder="Contoh: Sumatif Akhir Semester - Bahasa Indonesia" value={newExamTitle} onChange={(e) => setNewExamTitle(e.target.value)} />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">Guru Pengampu <span className="text-red-500">*</span></label>
-                    <select required className="w-full p-3 border rounded-lg focus:border-blue-500 focus:outline-none bg-gray-50 focus:bg-white cursor-pointer" value={newExamGuruId} onChange={(e) => setNewExamGuruId(e.target.value)}>
-                      <option value="">-- Pilih Guru --</option>
-                      <option value={loggedInUser.id}>Admin / Saya Sendiri</option>
-                      {teachers.filter(t => t.role === 'guru').map(t => <option key={t.id} value={String(t.id)}>{t.name} ({t.kelas})</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">Durasi Ujian</label>
-                    <div className="flex items-center w-full border rounded-lg overflow-hidden bg-gray-50 focus-within:bg-white focus-within:border-blue-500">
-                      <input required type="number" min="10" className="flex-1 p-3 focus:outline-none bg-transparent" value={newExamDuration} onChange={(e) => setNewExamDuration(e.target.value)} />
-                      <span className="bg-gray-100 px-4 py-3 font-bold text-gray-600 border-l">Menit</span>
-                    </div>
-                  </div>
-                </div>
-                <button type="submit" className={`w-full py-4 font-black text-white rounded-lg shadow-lg transition-colors text-lg mt-4 ${isEditingExam ? 'bg-yellow-500 hover:bg-yellow-600 text-yellow-900' : 'bg-blue-600 hover:bg-blue-700'}`}>
-                  {isEditingExam ? 'SIMPAN PERUBAHAN UJIAN' : 'GENERATE TOKEN UJIAN BARU'}
-                </button>
-              </form>
-            </div>
-
-            <div className="bg-white p-4 md:p-6 rounded-lg shadow overflow-x-auto">
-              <h2 className="text-xl font-bold mb-4 border-b pb-2">Daftar Seluruh Ujian/Token Sekolah ({exams.length})</h2>
-              <table className="w-full text-left border-collapse text-sm md:text-base">
-                <thead><tr className="bg-gray-100 border-b"><th className="p-2 md:p-3">Mata Pelajaran</th><th className="p-2 md:p-3">Token</th><th className="p-2 md:p-3">Ubah Guru Pengampu (Pemilik)</th><th className="p-2 md:p-3 text-right">Aksi</th></tr></thead>
-                <tbody>
-                  {exams.map(ex => (
-                    <tr key={ex.id} className="border-b hover:bg-gray-50">
-                      <td className="p-2 md:p-3 font-semibold text-gray-800">{ex.title}</td>
-                      <td className="p-2 md:p-3 font-mono font-black text-blue-700 text-lg tracking-wider">{ex.token}</td>
-                      <td className="p-2 md:p-3">
-                        <select value={ex.guru_id ? String(ex.guru_id) : ''} onChange={(e) => ubahPemilikUjian(ex.id, e.target.value)} className="p-2 border border-blue-300 rounded-lg text-sm bg-white font-semibold cursor-pointer w-full max-w-[200px] focus:outline-none focus:border-blue-600">
-                          <option value={String(loggedInUser.id)}>Admin / Saya Sendiri</option>
-                          {teachers.filter(t => t.role === 'guru').map(t => <option key={t.id} value={String(t.id)}>{t.name}</option>)}
-                        </select>
-                      </td>
-                      <td className="p-2 md:p-3 text-right whitespace-nowrap">
-                        <button onClick={() => handleEditExamClick(ex)} className="p-1.5 md:p-2 text-blue-600 hover:bg-blue-100 rounded mr-1 transition-colors" title="Edit Ujian"><Edit size={16}/></button>
-                        <button onClick={() => hapusUjian(ex.id, ex.token)} className="p-1.5 md:p-2 text-red-600 hover:bg-red-100 rounded transition-colors" title="Hapus Permanen"><Trash2 size={16}/></button>
-                      </td>
-                    </tr>
-                  ))}
-                  {exams.length === 0 && (<tr><td colSpan="4" className="p-4 text-center text-gray-500">Belum ada ujian yang dibuat oleh admin.</td></tr>)}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
         {/* === TAB SISWA (HANYA ADMIN) === */}
         {loggedInUser.role === 'admin' && activeTab === 'siswa' && (
           <div className="space-y-6 print:hidden">
-            <div className="bg-white p-5 md:p-6 rounded-lg shadow border-t-4 border-green-500">
-              <h2 className="text-lg md:text-xl font-bold mb-2 flex items-center gap-2"><UserPlus className="text-green-600"/> Upload Akun Siswa Massal (CSV)</h2>
+            <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-gray-200">
+              <h2 className="text-lg md:text-xl font-bold mb-2 flex items-center gap-2 text-gray-800"><UserPlus className="text-indigo-600"/> Upload Akun Siswa (CSV)</h2>
               <div className="flex flex-col md:flex-row gap-3 mt-4">
-                <button onClick={unduhTemplateCSV} className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 font-bold rounded hover:bg-blue-200 transition-colors text-sm border border-blue-300">
+                <button onClick={unduhTemplateCSV} className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 font-bold rounded-lg hover:bg-gray-200 border text-sm">
                   <Download size={16}/> Unduh Template
                 </button>
-                <div className="flex-1 flex items-center bg-gray-50 border border-gray-300 rounded p-1">
-                  <label className="w-full flex items-center justify-center gap-2 cursor-pointer bg-white px-4 py-2 rounded border border-dashed border-gray-400 hover:bg-gray-100">
+                <div className="flex-1 flex items-center">
+                  <label className="w-full flex items-center justify-center gap-2 cursor-pointer bg-white px-4 py-2.5 rounded-lg border border-dashed border-gray-400 hover:bg-gray-50">
                     <Upload size={16} className="text-gray-500"/>
                     <span className="text-sm font-bold text-gray-600">{isUploadingCSV ? 'Mengunggah...' : 'Pilih File CSV'}</span>
                     <input type="file" accept=".csv" onChange={handleUploadCSV} disabled={isUploadingCSV} className="hidden" />
@@ -1189,28 +1400,39 @@ export default function Admin() {
               </div>
             </div>
 
-            <div className={`bg-white p-5 md:p-6 rounded-lg shadow border-t-4 ${isEditingSiswa ? 'border-yellow-500' : 'border-blue-600'}`}>
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg md:text-xl font-bold">{isEditingSiswa ? 'Edit Akun Siswa' : 'Buat Akun Siswa Manual'}</h2>
-                {isEditingSiswa && <button type="button" onClick={resetFormSiswa} className="text-sm font-bold text-gray-500 hover:text-red-500 underline">Batal Edit</button>}
+            <div className={`bg-white p-5 md:p-6 rounded-2xl shadow-sm border ${isEditingSiswa ? 'border-yellow-400' : 'border-gray-200'}`}>
+              <div className="flex justify-between items-center mb-4 border-b pb-3">
+                <h2 className="text-lg font-bold text-gray-800">{isEditingSiswa ? 'Edit Akun Siswa' : 'Buat Akun Manual'}</h2>
+                {isEditingSiswa && <button type="button" onClick={resetFormSiswa} className="text-sm font-bold text-red-500 hover:text-red-700">Batal Edit</button>}
               </div>
-              <form onSubmit={simpanSiswa} className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 text-sm md:text-base">
-                <input required type="text" placeholder="Nama Lengkap Siswa" className="p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 focus:bg-white" value={namaSiswa} onChange={(e) => setNamaSiswa(e.target.value)} />
-                <input required type="text" placeholder="Kelas (Cth: XII IPA 1)" className="p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 focus:bg-white" value={kelasSiswa} onChange={(e) => setKelasSiswa(e.target.value)} />
-                <input required type="text" placeholder="Username Siswa" className="p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 focus:bg-white" value={usernameSiswa} onChange={(e) => setUsernameSiswa(e.target.value)} />
-                <input required type="text" placeholder="Password Siswa" className="p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 focus:bg-white" value={passwordSiswa} onChange={(e) => setPasswordSiswa(e.target.value)} />
-                <button type="submit" className={`md:col-span-2 text-white font-bold py-3 rounded-lg shadow-md transition-colors ${isEditingSiswa ? 'bg-yellow-500 hover:bg-yellow-600 text-yellow-900' : 'bg-blue-600 hover:bg-blue-700'}`}>
+              <form onSubmit={simpanSiswa} className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+                <div className="md:col-span-2">
+                   <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Nama Lengkap</label>
+                   <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none bg-gray-50 focus:bg-white" value={namaSiswa} onChange={(e) => setNamaSiswa(e.target.value)} />
+                </div>
+                <div className="md:col-span-2">
+                   <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Kelas</label>
+                   <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none bg-gray-50 focus:bg-white" value={kelasSiswa} onChange={(e) => setKelasSiswa(e.target.value)} />
+                </div>
+                <div className="md:col-span-2">
+                   <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Username (Cth: NISN)</label>
+                   <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none bg-gray-50 focus:bg-white" value={usernameSiswa} onChange={(e) => setUsernameSiswa(e.target.value)} />
+                </div>
+                <div className="md:col-span-2">
+                   <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Password</label>
+                   <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none bg-gray-50 focus:bg-white" value={passwordSiswa} onChange={(e) => setPasswordSiswa(e.target.value)} />
+                </div>
+                <button type="submit" className={`md:col-span-4 mt-2 text-white font-bold py-3 rounded-lg shadow-sm transition-colors ${isEditingSiswa ? 'bg-yellow-500 hover:bg-yellow-600 text-yellow-900' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
                   {isEditingSiswa ? 'SIMPAN PERUBAHAN' : 'BUAT AKUN SISWA'}
                 </button>
               </form>
             </div>
             
-            <div className="bg-white p-4 md:p-6 rounded-lg shadow overflow-x-auto">
-              {/* FILTER KELAS UI */}
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 border-b pb-4 gap-4">
+            <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border overflow-x-auto">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                 <div className="flex flex-col md:flex-row items-start md:items-center gap-3">
-                  <h2 className="text-lg md:text-xl font-bold">Daftar Akun Siswa ({filteredStudents.length})</h2>
-                  <div className="flex items-center gap-2 bg-gray-100 px-3 py-1.5 rounded border border-gray-300">
+                  <h2 className="text-lg font-bold text-gray-800">Daftar Akun ({filteredStudents.length})</h2>
+                  <div className="flex items-center gap-2 bg-gray-100 px-3 py-1.5 rounded-lg border border-gray-200">
                     <Filter size={16} className="text-gray-500"/>
                     <select value={filterKelas} onChange={(e) => setFilterKelas(e.target.value)} className="bg-transparent text-sm font-bold text-gray-700 outline-none cursor-pointer">
                       <option value="">Semua Kelas</option>
@@ -1219,28 +1441,28 @@ export default function Admin() {
                   </div>
                 </div>
                 <div className="flex gap-2 w-full md:w-auto">
-                  <button onClick={() => setIsPrintingCards(true)} className="flex-1 md:flex-none px-4 py-2 bg-blue-600 text-white rounded font-bold flex items-center justify-center gap-2 text-sm shadow hover:bg-blue-700 transition-colors">
-                    <Printer size={16}/> Cetak / PDF
+                  <button onClick={() => setIsPrintingCards(true)} className="flex-1 md:flex-none px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg font-bold flex items-center justify-center gap-2 text-sm shadow-sm hover:bg-gray-50">
+                    <Printer size={16}/> Cetak Kartu (PDF)
                   </button>
-                  <button onClick={unduhKartuWord} className="flex-1 md:flex-none px-4 py-2 bg-blue-800 text-white rounded font-bold flex items-center justify-center gap-2 text-sm shadow hover:bg-blue-900 transition-colors">
-                    <FileText size={16}/> Unduh Word
+                  <button onClick={unduhKartuWord} className="flex-1 md:flex-none px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold flex items-center justify-center gap-2 text-sm shadow-sm hover:bg-indigo-700">
+                    <FileText size={16}/> Ekspor Word
                   </button>
                 </div>
               </div>
               
-              <table className="w-full text-left border-collapse text-sm md:text-base">
-                <thead><tr className="bg-gray-100 border-b">
-                  <th className="p-2 md:p-3">Nama Lengkap</th><th className="p-2 md:p-3 hidden md:table-cell">Kelas</th><th className="p-2 md:p-3">Username</th><th className="p-2 md:p-3 text-right">Aksi</th>
+              <table className="w-full text-left border-collapse text-sm">
+                <thead><tr className="bg-gray-50 border-y">
+                  <th className="p-3">Nama Lengkap</th><th className="p-3 hidden md:table-cell">Kelas</th><th className="p-3">Username</th><th className="p-3 text-right">Aksi</th>
                 </tr></thead>
-                <tbody>
+                <tbody className="divide-y divide-gray-100">
                   {filteredStudents.map(s => (
-                    <tr key={s.id} className="border-b hover:bg-gray-50">
-                      <td className="p-2 md:p-3 font-semibold text-gray-800">{s.name} <div className="text-xs text-gray-500 md:hidden">{s.kelas}</div></td>
-                      <td className="p-2 md:p-3 hidden md:table-cell text-gray-600">{s.kelas || '-'}</td>
-                      <td className="p-2 md:p-3 font-mono text-blue-700">{s.username}</td>
-                      <td className="p-2 md:p-3 text-right whitespace-nowrap">
-                        <button onClick={() => handleEditSiswaClick(s)} className="p-1.5 md:p-2 text-blue-600 hover:bg-blue-100 rounded mr-1 transition-colors"><Edit size={16}/></button>
-                        <button onClick={() => hapusUser(s.id, 'Siswa')} className="p-1.5 md:p-2 text-red-600 hover:bg-red-100 rounded transition-colors"><Trash2 size={16}/></button>
+                    <tr key={s.id} className="hover:bg-gray-50">
+                      <td className="p-3 font-bold text-gray-800">{s.name} <div className="text-xs text-gray-500 md:hidden font-medium">{s.kelas}</div></td>
+                      <td className="p-3 hidden md:table-cell text-gray-600 font-medium">{s.kelas || '-'}</td>
+                      <td className="p-3 font-mono text-indigo-600 text-xs">{s.username}</td>
+                      <td className="p-3 text-right whitespace-nowrap">
+                        <button onClick={() => handleEditSiswaClick(s)} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded mr-1"><Edit size={16}/></button>
+                        <button onClick={() => hapusUser(s.id, 'Siswa')} className="p-1.5 text-red-600 hover:bg-red-100 rounded"><Trash2 size={16}/></button>
                       </td>
                     </tr>
                   ))}
@@ -1254,39 +1476,51 @@ export default function Admin() {
         {/* === TAB GURU (HANYA ADMIN) === */}
         {loggedInUser.role === 'admin' && activeTab === 'guru' && (
           <div className="space-y-6 print:hidden">
-            <div className={`bg-white p-5 md:p-6 rounded-lg shadow border-t-4 ${isEditingGuru ? 'border-yellow-500' : 'border-purple-600'}`}>
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg md:text-xl font-bold">{isEditingGuru ? 'Edit Akun Guru' : 'Registrasi Akun Guru Baru'}</h2>
-                {isEditingGuru && <button type="button" onClick={resetFormGuru} className="text-sm font-bold text-gray-500 hover:text-red-500 underline">Batal Edit</button>}
+            <div className={`bg-white p-5 md:p-6 rounded-2xl shadow-sm border ${isEditingGuru ? 'border-yellow-400' : 'border-gray-200'}`}>
+              <div className="flex justify-between items-center mb-4 border-b pb-3">
+                <h2 className="text-lg font-bold text-gray-800">{isEditingGuru ? 'Edit Akun Guru' : 'Registrasi Akun Guru Baru'}</h2>
+                {isEditingGuru && <button type="button" onClick={resetFormGuru} className="text-sm font-bold text-red-500 hover:text-red-700">Batal Edit</button>}
               </div>
-              <form onSubmit={simpanGuru} className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 text-sm md:text-base">
-                <input required type="text" placeholder="Nama Lengkap Guru (Beserta Gelar)" className="p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none bg-gray-50 focus:bg-white" value={namaGuru} onChange={(e) => setNamaGuru(e.target.value)} />
-                <input required type="text" placeholder="Mata Pelajaran yang Diampu" className="p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none bg-gray-50 focus:bg-white" value={mapelGuru} onChange={(e) => setMapelGuru(e.target.value)} />
-                <input required type="text" placeholder="Username (Untuk Login Guru)" className="p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none bg-gray-50 focus:bg-white" value={usernameGuru} onChange={(e) => setUsernameGuru(e.target.value)} />
-                <input required type="text" placeholder="Password Guru" className="p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none bg-gray-50 focus:bg-white" value={passwordGuru} onChange={(e) => setPasswordGuru(e.target.value)} />
-                <button type="submit" className={`md:col-span-2 text-white font-bold py-3 rounded-lg shadow-md transition-colors ${isEditingGuru ? 'bg-yellow-500 hover:bg-yellow-600 text-yellow-900' : 'bg-purple-600 hover:bg-purple-700'}`}>
+              <form onSubmit={simpanGuru} className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div>
+                   <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Nama Lengkap (Beserta Gelar)</label>
+                   <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none bg-gray-50 focus:bg-white" value={namaGuru} onChange={(e) => setNamaGuru(e.target.value)} />
+                </div>
+                <div>
+                   <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Mata Pelajaran yang Diampu</label>
+                   <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none bg-gray-50 focus:bg-white" value={mapelGuru} onChange={(e) => setMapelGuru(e.target.value)} />
+                </div>
+                <div>
+                   <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Username Login</label>
+                   <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none bg-gray-50 focus:bg-white" value={usernameGuru} onChange={(e) => setUsernameGuru(e.target.value)} />
+                </div>
+                <div>
+                   <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Password Login</label>
+                   <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none bg-gray-50 focus:bg-white" value={passwordGuru} onChange={(e) => setPasswordGuru(e.target.value)} />
+                </div>
+                <button type="submit" className={`md:col-span-2 mt-2 text-white font-bold py-3 rounded-lg shadow-sm transition-colors ${isEditingGuru ? 'bg-yellow-500 hover:bg-yellow-600 text-yellow-900' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
                   {isEditingGuru ? 'SIMPAN PERUBAHAN' : 'BUAT AKUN GURU'}
                 </button>
               </form>
             </div>
             
-            <div className="bg-white p-4 md:p-6 rounded-lg shadow overflow-x-auto">
-              <h2 className="text-lg md:text-xl font-bold mb-4 border-b pb-2">Daftar Akun Guru / Pengawas ({teachers.length})</h2>
-              <table className="w-full text-left border-collapse text-sm md:text-base">
-                <thead><tr className="bg-gray-100 border-b">
-                  <th className="p-2 md:p-3">Nama Lengkap</th><th className="p-2 md:p-3">Mata Pelajaran</th><th className="p-2 md:p-3">Username</th><th className="p-2 md:p-3 text-right">Aksi</th>
+            <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border overflow-x-auto">
+              <h2 className="text-lg font-bold text-gray-800 mb-4">Daftar Akun Guru / Pengawas ({teachers.length})</h2>
+              <table className="w-full text-left border-collapse text-sm">
+                <thead><tr className="bg-gray-50 border-y">
+                  <th className="p-3">Nama Lengkap</th><th className="p-3">Mata Pelajaran</th><th className="p-3">Username</th><th className="p-3 text-right">Aksi</th>
                 </tr></thead>
-                <tbody>
+                <tbody className="divide-y divide-gray-100">
                   {teachers.map(t => (
-                    <tr key={t.id} className="border-b hover:bg-gray-50">
-                      <td className="p-2 md:p-3 font-semibold text-gray-800">{t.name} {t.role === 'admin' && <span className="ml-2 text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded">Super Admin</span>}</td>
-                      <td className="p-2 md:p-3 text-gray-700">{t.kelas || '-'}</td>
-                      <td className="p-2 md:p-3 font-mono text-purple-700">{t.username}</td>
-                      <td className="p-2 md:p-3 text-right whitespace-nowrap">
+                    <tr key={t.id} className="hover:bg-gray-50">
+                      <td className="p-3 font-bold text-gray-800">{t.name} {t.role === 'admin' && <span className="ml-2 text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full uppercase">Admin</span>}</td>
+                      <td className="p-3 text-gray-600 font-medium">{t.kelas || '-'}</td>
+                      <td className="p-3 font-mono text-indigo-600 text-xs">{t.username}</td>
+                      <td className="p-3 text-right whitespace-nowrap">
                         {t.role !== 'admin' && (
                           <>
-                            <button onClick={() => handleEditGuruClick(t)} className="p-1.5 md:p-2 text-blue-600 hover:bg-blue-100 rounded mr-1 transition-colors"><Edit size={16}/></button>
-                            <button onClick={() => hapusUser(t.id, 'Guru')} className="p-1.5 md:p-2 text-red-600 hover:bg-red-100 rounded transition-colors"><Trash2 size={16}/></button>
+                            <button onClick={() => handleEditGuruClick(t)} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded mr-1"><Edit size={16}/></button>
+                            <button onClick={() => hapusUser(t.id, 'Guru')} className="p-1.5 text-red-600 hover:bg-red-100 rounded"><Trash2 size={16}/></button>
                           </>
                         )}
                       </td>
