@@ -77,7 +77,6 @@ export default function ExamCBT() {
       });
       setQuestions(shuffledQuestions);
 
-      // Buat Sesi Live Proktor
       const { data: sessionData } = await supabase.from('live_sessions').upsert(
         { user_id: user.id, exam_id: exam.id, status: 'mengerjakan', current_question_index: 0, last_active: new Date().toISOString() }, 
         { onConflict: 'user_id,exam_id' }
@@ -94,7 +93,6 @@ export default function ExamCBT() {
   useEffect(() => {
     if (step !== 'EXAM' || isSubmitting) return;
 
-    // Ping ke Live Proktor & Cek tendangan
     const pingTimer = setInterval(async () => {
       if (sessionId) {
         const { data } = await supabase.from('live_sessions').update({ 
@@ -181,24 +179,60 @@ export default function ExamCBT() {
   const formatTime = (seconds) => { const m = Math.floor(seconds / 60); const s = seconds % 60; return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`; };
   const handleContentClick = (e) => { if (e.target.tagName === 'IMG') { setZoomedImg(e.target.src); setZoomScale(1); } };
   const handleLogout = () => { localStorage.removeItem('user'); navigate('/'); };
-
   const isReadyToStart = checkDND && checkOverlay && checkFocus;
 
-  // ==== UI DASHBOARD ====
+  // ==== UI: DASHBOARD (KONFIRMASI DATA & INPUT TOKEN - GAYA TKA/ANBK) ====
   if (step === 'DASHBOARD') {
     return (
-      <div className="min-h-screen bg-gray-200 p-4 flex items-center justify-center font-sans">
-        <div className="bg-white p-6 md:p-10 rounded-2xl shadow-2xl w-full max-w-lg border-t-8 border-blue-700">
-          <div className="flex justify-between items-start border-b-2 border-gray-100 pb-4 mb-6">
-            <div><h2 className="text-2xl font-black text-gray-800">Halo, {user.name}!</h2><p className="text-gray-500 font-medium mt-1">Siswa Kelas {user.kelas || '-'}</p></div>
-            <button onClick={handleLogout} className="text-red-500 p-2 hover:bg-red-50 rounded-full"><LogOut size={24} /></button>
+      <div className="min-h-screen bg-[#e9ecef] flex items-center justify-center p-4 font-sans select-none relative">
+        <div className="w-full max-w-xl bg-white rounded-lg shadow-xl overflow-hidden relative">
+          
+          {/* Header Biru */}
+          <div className="bg-[#1e40af] p-4 text-white flex justify-between items-center shadow-sm relative z-10">
+            <h2 className="font-bold tracking-wide">KONFIRMASI DATA PESERTA</h2>
+            <button onClick={handleLogout} className="text-white hover:text-red-200 transition-colors" title="Logout"><LogOut size={20} /></button>
           </div>
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 text-center">
-            <h3 className="text-lg font-bold text-blue-900 mb-2">Masuk ke Ruang Ujian</h3>
-            <p className="text-sm text-blue-700 mb-6">Silakan ketik 6 Digit Token yang muncul di layar pengawas.</p>
-            <form onSubmit={cariUjian} className="flex flex-col gap-4">
-              <input type="text" required placeholder="Token..." className="w-full text-center text-2xl tracking-[0.5em] font-mono font-black uppercase p-4 border-2 border-blue-300 rounded-lg focus:border-blue-600 outline-none" value={inputToken} onChange={(e) => setInputToken(e.target.value)} maxLength={6} />
-              <button type="submit" disabled={isLoading} className="w-full bg-blue-700 text-white font-bold py-4 rounded-lg shadow-lg hover:bg-blue-800 active:scale-95 text-lg">{isLoading ? 'MEMERIKSA...' : 'MASUK UJIAN'}</button>
+
+          <div className="p-6 md:p-8 relative z-10 bg-white">
+            
+            <form onSubmit={cariUjian} className="space-y-6">
+              
+              <div className="space-y-4">
+                {/* Kode Peserta / Username */}
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">Kode Peserta</label>
+                  <div className="p-3 bg-gray-50 border border-gray-200 rounded font-mono font-bold text-gray-800">{user.username}</div>
+                </div>
+
+                {/* Nama Peserta */}
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">Nama Peserta</label>
+                  <div className="p-3 bg-gray-50 border border-gray-200 rounded font-bold text-gray-800">{user.name}</div>
+                </div>
+
+                {/* Kelas */}
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">Kelas</label>
+                  <div className="p-3 bg-gray-50 border border-gray-200 rounded font-bold text-gray-800">{user.kelas || '-'}</div>
+                </div>
+
+                <hr className="my-2 border-gray-200" />
+
+                {/* Token (Tengah & Menonjol) */}
+                <div>
+                  <label className="block text-[11px] font-bold text-blue-600 uppercase tracking-wider mb-1">Token Ujian</label>
+                  <input 
+                    type="text" required placeholder="Ketikkan token di sini" 
+                    className="w-full p-4 bg-blue-50 border border-blue-200 rounded text-center text-xl font-mono font-black uppercase tracking-[0.3em] text-blue-900 focus:outline-none focus:border-blue-500 focus:bg-white transition-colors placeholder:font-sans placeholder:tracking-normal placeholder:text-sm placeholder:font-medium placeholder:text-gray-400"
+                    value={inputToken} onChange={(e) => setInputToken(e.target.value)} maxLength={6} 
+                  />
+                </div>
+              </div>
+
+              {/* Tombol Submit */}
+              <button type="submit" disabled={isLoading} className="w-full bg-[#1d4ed8] text-white font-bold py-3.5 rounded shadow hover:bg-[#1e40af] transition-all disabled:opacity-70 text-sm">
+                {isLoading ? 'MEMERIKSA...' : 'SUBMIT'}
+              </button>
             </form>
           </div>
         </div>
@@ -206,7 +240,7 @@ export default function ExamCBT() {
     );
   }
 
-  // ==== UI CHECKLIST ====
+  // ==== UI: CHECKLIST ====
   if (step === 'CHECKLIST') {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4 md:p-6 select-none w-full">
@@ -230,7 +264,7 @@ export default function ExamCBT() {
     );
   }
 
-  // ==== UI SELESAI ====
+  // ==== UI: SELESAI ====
   if (step === 'SELESAI') {
     return (
       <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4 font-sans select-none">
@@ -244,7 +278,7 @@ export default function ExamCBT() {
     );
   }
 
-  // ==== UI ANBK STYLE ====
+  // ==== UI: ANBK STYLE ====
   return (
     <div className="flex flex-col h-[100dvh] bg-[#f0f2f5] font-sans select-none overflow-hidden relative">
       {zoomedImg && (
@@ -260,9 +294,9 @@ export default function ExamCBT() {
         </div>
       )}
 
-      <header className="flex items-center justify-between p-3 md:px-6 md:py-3 text-white bg-blue-900 shrink-0 shadow-md">
+      <header className="flex items-center justify-between p-3 md:px-6 md:py-3 text-white bg-[#1e40af] shrink-0 shadow-md">
         <div className="flex items-center gap-3">
-          <div className="bg-white text-blue-900 p-1.5 md:p-2 rounded-lg font-black text-xs md:text-sm">SMAN 1</div>
+          <div className="bg-white text-[#1e40af] p-1.5 md:p-2 rounded-lg font-black text-xs md:text-sm">SMAN 1</div>
           <div><h1 className="text-sm md:text-lg font-bold leading-tight truncate max-w-[150px] md:max-w-[300px]">{exam.title}</h1><p className="text-[10px] md:text-xs text-blue-200 font-medium">Ujian Berbasis Komputer</p></div>
         </div>
         <div className="flex items-center gap-3">
@@ -289,7 +323,7 @@ export default function ExamCBT() {
              <div className="p-4 overflow-y-auto flex-1 grid grid-cols-5 gap-2">
                 {questions.map((q, idx) => {
                   const isActive = idx === currentIdx; let bgColor = 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100';
-                  if (doubtful.has(q.id)) bgColor = 'bg-yellow-400 text-black border-yellow-500'; else if (!!answers[q.id]) bgColor = 'bg-blue-600 text-white border-blue-700';
+                  if (doubtful.has(q.id)) bgColor = 'bg-yellow-400 text-black border-yellow-500'; else if (!!answers[q.id]) bgColor = 'bg-[#1e40af] text-white border-blue-700';
                   return <button key={q.id} onClick={() => { setCurrentIdx(idx); setShowQuestionGrid(false); }} className={`w-full aspect-square text-sm border-2 rounded font-bold ${bgColor} ${isActive ? 'ring-4 ring-black scale-110 z-10' : ''}`}>{idx + 1}</button>;
                 })}
              </div>
@@ -386,7 +420,7 @@ export default function ExamCBT() {
             <input type="checkbox" checked={doubtful.has(questions[currentIdx]?.id)} onChange={toggleDoubt} className="w-4 h-4 accent-yellow-900" /> <HelpCircle size={16} className="hidden md:block"/> Ragu-Ragu
           </label>
           {currentIdx === questions.length - 1 ? (
-            <button onClick={() => handleSelesaiUjian(false)} disabled={isSubmitting} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-3 md:px-12 md:py-4 font-black text-white bg-blue-600 rounded-full shadow-md hover:bg-blue-700 disabled:opacity-70 text-xs md:text-base whitespace-nowrap">
+            <button onClick={() => handleSelesaiUjian(false)} disabled={isSubmitting} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-3 md:px-12 md:py-4 font-black text-white bg-[#1e40af] rounded-full shadow-md hover:bg-blue-800 disabled:opacity-70 text-xs md:text-base whitespace-nowrap">
               {isSubmitting ? 'MENGIRIM...' : 'SELESAI UJIAN'}
             </button>
           ) : (
