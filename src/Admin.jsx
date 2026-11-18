@@ -8,7 +8,7 @@ export default function Admin() {
   const navigate = useNavigate();
   const loggedInUser = JSON.parse(localStorage.getItem('user') || '{}');
 
-  const [activeTab, setActiveTab] = useState('jadwal');
+  const [activeTab, setActiveTab] = useState('jadwal'); 
   const [exams, setExams] = useState([]);
   const [activeExamId, setActiveExamId] = useState(null);
   const [token, setToken] = useState('');
@@ -34,7 +34,6 @@ export default function Admin() {
   const [newExamKelas, setNewExamKelas] = useState('');
   const [isEditingExam, setIsEditingExam] = useState(false);
   const [editExamId, setEditExamId] = useState(null);
-
   const [examDuration, setExamDuration] = useState(60);
 
   const [tipeSoal, setTipeSoal] = useState('PG');
@@ -49,7 +48,6 @@ export default function Admin() {
   const [kunciIS, setKunciIS] = useState('');
   const [kunciU, setKunciU] = useState('');
   const [pasanganM, setPasanganM] = useState([{kiri: '', kanan: ''}, {kiri: '', kanan: ''}]);
-
   const [isEditing, setIsEditing] = useState(false);
   const [editQuestionId, setEditQuestionId] = useState(null);
 
@@ -125,7 +123,7 @@ export default function Admin() {
       const { data: rData } = await supabase.from('exam_results').select('*, users(name, username, kelas)').eq('exam_id', examId).order('score', { ascending: false });
       setResults(rData || []);
       resetForm();
-    } catch (err) { console.error("Error switching token:", err); }
+    } catch (err) { console.error(err); }
   };
 
   const updateDurasiUjian = async () => {
@@ -140,8 +138,7 @@ export default function Admin() {
     if (!ex.is_active) return;
     const now = new Date(); const expiresAt = ex.token_expires_at ? new Date(ex.token_expires_at) : new Date(0);
     if (now >= expiresAt) {
-      const newToken = generateRandom6Digit();
-      const newExpiresAt = new Date(now.getTime() + 15 * 60000);
+      const newToken = generateRandom6Digit(); const newExpiresAt = new Date(now.getTime() + 15 * 60000);
       await supabase.from('exams').update({ token: newToken, token_expires_at: newExpiresAt.toISOString() }).eq('id', ex.id);
     }
   };
@@ -149,7 +146,7 @@ export default function Admin() {
   const forceRotateToken = async (examId) => {
     const newToken = generateRandom6Digit(); const newExpiresAt = new Date(new Date().getTime() + 15 * 60000);
     const { error } = await supabase.from('exams').update({ token: newToken, token_expires_at: newExpiresAt.toISOString() }).eq('id', examId);
-    if (!error) { fetchExamsList(); alert('Token berhasil diperbarui manual!'); }
+    if (!error) { fetchExamsList(); alert('Token berhasil diperbarui!'); }
   };
 
   const toggleStatusUjian = async (examId, currentStatus) => {
@@ -157,7 +154,6 @@ export default function Admin() {
     fetchExamsList();
   };
 
-  // LIVE PROKTOR: KELUARKAN ATAU RESET SISWA
   const fetchLiveSessions = async (examId) => {
     const { data } = await supabase.from('live_sessions').select('*, users(name, username, kelas)').eq('exam_id', examId);
     if (data) setLiveSessions(data);
@@ -165,10 +161,7 @@ export default function Admin() {
 
   const resetSiswa = async (sess) => {
     const isDone = sess.status === 'selesai';
-    const msg = isDone 
-      ? `Reset ujian ${sess.users?.name}? Nilai yang sudah tersimpan akan dihapus permanen dan siswa bisa mengulang ujian dari awal.`
-      : `Keluarkan ${sess.users?.name} dari ujian saat ini? Siswa akan terlempar keluar dari ruang ujian dan jawaban sementaranya akan hangus.`;
-    
+    const msg = isDone ? `Reset ujian ${sess.users?.name}? Nilai akan dihapus.` : `Keluarkan ${sess.users?.name} dari ujian saat ini?`;
     if (!window.confirm(msg)) return;
     
     if (isDone) {
@@ -185,7 +178,7 @@ export default function Admin() {
     if (!ex.schedule_date) return <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold border border-green-200">Terbuka Bebas</span>;
     const now = new Date(); const start = new Date(`${ex.schedule_date}T${ex.start_time || '00:00'}:00`); const end = new Date(`${ex.schedule_date}T${ex.end_time || '23:59'}:00`);
     if (now < start) return <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs font-bold border border-yellow-300">Belum Mulai</span>;
-    if (now > end) return <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs font-bold border border-gray-300">Selesai / Lewat Waktu</span>;
+    if (now > end) return <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs font-bold border border-gray-300">Selesai / Lewat</span>;
     return <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold border border-green-200">Berlangsung</span>;
   };
 
@@ -214,19 +207,21 @@ export default function Admin() {
     if (!window.confirm(`Yakin menghapus ujian ini permanen?`)) return;
     await supabase.from('exam_results').delete().eq('exam_id', id); await supabase.from('questions').delete().eq('exam_id', id); await supabase.from('live_sessions').delete().eq('exam_id', id); await supabase.from('exams').delete().eq('id', id); fetchExamsList();
   };
-  const ubahPemilikUjian = async (examId, newGuruId) => { await supabase.from('exams').update({ guru_id: newGuruId }).eq('id', examId); fetchExamsList(); };
+  
   const simpanSiswa = async (e) => {
     e.preventDefault(); const payload = { name: namaSiswa, kelas: kelasSiswa, username: usernameSiswa, password: passwordSiswa, role: 'siswa' };
     if (isEditingSiswa) { await supabase.from('users').update(payload).eq('id', editSiswaId); resetFormSiswa(); fetchUsers(); } else { await supabase.from('users').insert([payload]); resetFormSiswa(); fetchUsers(); }
   };
   const resetFormSiswa = () => { setNamaSiswa(''); setKelasSiswa(''); setUsernameSiswa(''); setPasswordSiswa(''); setIsEditingSiswa(false); setEditSiswaId(null); };
   const handleEditSiswaClick = (s) => { setNamaSiswa(s.name); setKelasSiswa(s.kelas || ''); setUsernameSiswa(s.username); setPasswordSiswa(s.password); setIsEditingSiswa(true); setEditSiswaId(s.id); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  
   const simpanGuru = async (e) => {
     e.preventDefault(); const payload = { name: namaGuru, kelas: mapelGuru, username: usernameGuru, password: passwordGuru, role: 'guru' };
     if (isEditingGuru) { await supabase.from('users').update(payload).eq('id', editGuruId); resetFormGuru(); fetchUsers(); } else { await supabase.from('users').insert([payload]); resetFormGuru(); fetchUsers(); }
   };
   const resetFormGuru = () => { setNamaGuru(''); setMapelGuru(''); setUsernameGuru(''); setPasswordGuru(''); setIsEditingGuru(false); setEditGuruId(null); };
   const handleEditGuruClick = (g) => { setNamaGuru(g.name); setMapelGuru(g.kelas || ''); setUsernameGuru(g.username); setPasswordGuru(g.password); setIsEditingGuru(true); setEditGuruId(g.id); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  
   const hapusUser = async (id, roleName) => { if(window.confirm(`Yakin hapus akun ${roleName} ini?`)) { await supabase.from('users').delete().eq('id', id); fetchUsers(); } };
 
   // FUNGSI EKSPOR 
@@ -410,17 +405,11 @@ export default function Admin() {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-[#f4f7fb] font-sans print:bg-white">
-      
-      {/* HEADER MOBILE */}
       <div className="md:hidden bg-white p-4 flex justify-between items-center border-b shadow-sm sticky top-0 z-30 print:hidden">
-         <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-inner"><ShieldCheck className="text-white" size={20}/></div>
-            <h1 className="font-black text-gray-800">CBT Admin</h1>
-         </div>
+         <div className="flex items-center gap-2"><div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-inner"><ShieldCheck className="text-white" size={20}/></div><h1 className="font-black text-gray-800">CBT Admin</h1></div>
          <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 text-gray-600 bg-gray-100 rounded-lg">{isMobileMenuOpen ? <X size={20}/> : <Menu size={20}/>}</button>
       </div>
 
-      {/* SIDEBAR TKA STYLE */}
       <div className={`w-full md:w-64 bg-white border-r shadow-sm shrink-0 flex-col h-screen md:sticky md:top-0 print:hidden transition-all duration-300 absolute md:relative z-20 ${isMobileMenuOpen ? 'flex left-0' : 'hidden md:flex'}`}>
         <div className="p-6 border-b hidden md:block">
           <div className="flex items-center gap-3">
@@ -433,9 +422,12 @@ export default function Admin() {
           <NavItem id="jadwal" icon={Key} label="Jadwal & Token" />
           <NavItem id="pantau" icon={Activity} label="Pantau Peserta" />
           <NavItem id="hasil" icon={BarChart2} label="Analisis Hasil" />
+          
+          {/* DIPERBAIKI: Bank Soal kini tersedia untuk Admin DAN Guru */}
+          <NavItem id="soal" icon={FileText} label="Bank Soal" />
+          
           {loggedInUser.role === 'admin' && (
             <>
-              <NavItem id="soal" icon={FileText} label="Bank Soal" />
               <NavItem id="siswa" icon={Users} label="Akun Siswa" />
               <NavItem id="guru" icon={ShieldCheck} label="Akun Guru" />
             </>
@@ -443,10 +435,7 @@ export default function Admin() {
         </div>
 
         <div className="p-4 border-t bg-gray-50">
-           <div className="mb-3 px-2 hidden md:block">
-              <p className="font-bold text-sm text-gray-800">{loggedInUser.name}</p>
-              <p className="text-xs text-gray-500 font-semibold">{loggedInUser.role === 'admin' ? 'Administrator' : 'Pengawas/Guru'}</p>
-           </div>
+           <div className="mb-3 px-2 hidden md:block"><p className="font-bold text-sm text-gray-800">{loggedInUser.name}</p><p className="text-xs text-gray-500 font-semibold">{loggedInUser.role === 'admin' ? 'Administrator' : 'Pengawas/Guru'}</p></div>
            <button onClick={() => { localStorage.removeItem('user'); navigate('/'); }} className="w-full p-2.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 font-bold flex items-center justify-center gap-2 border border-red-200"><LogOut size={16}/> Keluar</button>
         </div>
       </div>
@@ -456,7 +445,7 @@ export default function Admin() {
         {/* === TAB 1: JADWAL & TOKEN === */}
         {activeTab === 'jadwal' && (
           <div className="max-w-5xl mx-auto space-y-6">
-            <div><h2 className="text-2xl font-black text-gray-800">Jadwal & Token Ujian</h2><p className="text-gray-500 font-medium">Token akan diperbarui otomatis setiap 15 menit.</p></div>
+            <div><h2 className="text-2xl font-black text-gray-800">Jadwal & Token Ujian</h2><p className="text-gray-500 font-medium text-sm md:text-base">Token akan diperbarui otomatis setiap 15 menit.</p></div>
             {loggedInUser.role === 'admin' && (
               <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-gray-200">
                 <div className="flex justify-between items-center mb-4 border-b pb-3">
@@ -492,7 +481,7 @@ export default function Admin() {
                     <input type="time" className="w-full p-2.5 border rounded-lg bg-gray-50 outline-none font-medium" value={newExamEnd} onChange={(e) => setNewExamEnd(e.target.value)} />
                   </div>
                   <div className="md:col-span-1">
-                    <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Durasi Pengerjaan</label>
+                    <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Durasi</label>
                     <div className="flex border rounded-lg overflow-hidden bg-gray-50"><input required type="number" className="w-full p-2.5 bg-transparent outline-none font-medium text-center" value={newExamDuration} onChange={(e) => setNewExamDuration(e.target.value)} /><span className="bg-gray-200 px-3 flex items-center text-xs font-bold text-gray-600">Mnt</span></div>
                   </div>
                   <div className="md:col-span-4 flex justify-end mt-2">
@@ -503,7 +492,7 @@ export default function Admin() {
             )}
             <div className="space-y-4">
                {exams.map(ex => (
-                 <div key={ex.id} className={`bg-white border rounded-2xl p-5 md:p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all ${!ex.is_active ? 'opacity-60 grayscale' : 'hover:border-indigo-300'}`}>
+                 <div key={ex.id} className={`bg-white border rounded-2xl p-5 md:p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all ${!ex.is_active ? 'opacity-60 grayscale' : 'hover:border-indigo-300 hover:shadow-md'}`}>
                     <div className="flex-1">
                        <div className="flex items-center gap-3 mb-1"><h3 className="text-xl font-black text-gray-800">{ex.title}</h3>{getStatusText(ex)}</div>
                        <p className="text-sm text-gray-500 font-medium flex flex-wrap items-center gap-1.5"><Users size={14}/> Kelas: {ex.target_kelas || 'Semua'} <span className="mx-2 hidden md:inline">•</span><br className="md:hidden"/> <Calendar size={14}/> {ex.schedule_date || '-'} <span className="mx-2">•</span> <ClockIcon size={14}/> Sesi: {ex.start_time || '--:--'} - {ex.end_time || '--:--'} ({ex.duration_minutes} Mnt)</p>
@@ -537,7 +526,7 @@ export default function Admin() {
           </div>
         )}
 
-        {/* === TAB 2: PANTAU PESERTA === */}
+        {/* === TAB 2: PANTAU PESERTA (LIVE PROKTOR) === */}
         {activeTab === 'pantau' && (
           <div className="max-w-5xl mx-auto space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
@@ -586,7 +575,6 @@ export default function Admin() {
                             </td>
                             <td className="p-4 text-center font-black text-indigo-600">{isDone ? '-' : `No. ${sess.current_question_index + 1}`}</td>
                             <td className="p-4 text-right">
-                               {/* TOMBOL KELUARKAN / RESET PINTAR */}
                                <button onClick={() => resetSiswa(sess)} className="px-3 py-1.5 bg-red-50 text-red-600 font-bold rounded-lg border border-red-200 hover:bg-red-100 text-xs flex items-center justify-center gap-1 w-24 ml-auto transition-colors">
                                   {isDone ? <RefreshCw size={14}/> : <XSquare size={14}/>} {isDone ? 'Reset Ujian' : 'Keluarkan'}
                                </button>
@@ -616,7 +604,6 @@ export default function Admin() {
                   </select>
                   <button onClick={() => changeActiveExam(activeExamId, token)} className="px-3 py-2 bg-gray-200 text-gray-800 rounded font-bold hover:bg-gray-300 text-sm">Refresh</button>
                   <button onClick={() => setShowAnalisisKelas(!showAnalisisKelas)} className="px-3 py-2 bg-purple-100 text-purple-800 rounded font-bold hover:bg-purple-200 flex items-center gap-1 text-sm"><BarChart2 size={16}/> Analisis Klasikal</button>
-                  
                   <button onClick={() => window.print()} className="px-3 py-2 bg-green-600 text-white rounded font-bold hover:bg-green-700 flex items-center gap-1 text-sm"><Printer size={16}/> Cetak PDF</button>
                   <button onClick={unduhLaporanKlasikalWord} className="px-3 py-2 bg-indigo-800 text-white rounded font-bold hover:bg-indigo-900 flex items-center gap-1 text-sm"><FileText size={16}/> Ekspor Word</button>
                 </div>
@@ -681,70 +668,4 @@ export default function Admin() {
                       <th className="p-2 md:p-4 print:border print:border-black">Nama</th><th className="p-2 md:p-4 print:border print:border-black hidden md:table-cell">Kelas</th><th className="p-2 md:p-4 print:border print:border-black text-center">Nilai Auto-Grade</th><th className="p-2 md:p-4 text-right print:hidden">Aksi</th>
                   </tr></thead>
                   <tbody>
-                    {results.map((res) => (
-                      <tr key={res.id} className="border-b hover:bg-gray-50 transition-colors print:border-black">
-                        <td className="p-2 md:p-4 font-semibold text-gray-800 print:border print:border-black print:text-black">{res.users?.name} <div className="text-xs text-gray-500 md:hidden">{res.users?.kelas}</div></td>
-                        <td className="p-2 md:p-4 hidden md:table-cell text-gray-600 print:border print:border-black print:text-black">{res.users?.kelas || '-'}</td>
-                        <td className="p-2 md:p-4 text-center font-bold text-xl md:text-2xl text-indigo-600 print:border print:border-black print:text-black print:text-lg">{res.score}</td>
-                        <td className="p-2 md:p-4 text-right flex justify-end gap-1 md:gap-2 items-center print:hidden">
-                          <button onClick={() => setSelectedResult(res)} className="px-2 py-1.5 md:px-4 md:py-2 bg-indigo-600 text-white font-bold rounded shadow hover:bg-indigo-700 text-xs md:text-sm">Analisis Rinci</button>
-                          <button onClick={() => hapusHasilUjian(res.id, res.users?.name)} className="p-1.5 md:p-2 bg-red-100 text-red-600 rounded hover:bg-red-200"><Trash2 size={16}/></button>
-                        </td>
-                      </tr>
-                    ))}
-                    {results.length === 0 && (<tr><td colSpan="4" className="p-6 md:p-8 text-center text-gray-500 italic print:border print:border-black">Belum ada data nilai masuk.</td></tr>)}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL ANALISIS INDIVIDU (Disembunyikan demi keringkasan chat, kode sama persis) */}
-        {selectedResult && (
-          <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-[9999] print:absolute print:inset-0 print:bg-transparent print:p-0 print:block">
-            <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto print:max-h-none print:shadow-none print:border-none print:p-0 print:w-full print:m-0">
-              <div className="flex justify-between items-center mb-6 border-b pb-4 print:hidden">
-                <h2 className="text-xl md:text-2xl font-bold text-gray-800">Evaluasi: {selectedResult.users?.name}</h2>
-                <div className="flex gap-2 items-center"><button onClick={() => window.print()} className="px-4 py-2 bg-green-600 text-white font-bold rounded shadow hover:bg-green-700 flex items-center gap-2"><Printer size={16}/> Cetak</button><button onClick={() => unduhAnalisisIndividuWord(selectedResult)} className="px-4 py-2 bg-indigo-800 text-white font-bold rounded shadow hover:bg-indigo-900 flex items-center gap-2"><FileText size={16}/> Ekspor Word</button><button onClick={() => setSelectedResult(null)} className="ml-2 text-red-500 hover:bg-red-50 p-2 rounded-full font-bold"><X size={24}/></button></div>
-              </div>
-              <div className="hidden print:block text-center mb-6"><h2 className="text-2xl font-bold">LEMBAR EVALUASI SISWA</h2><p className="text-lg">Mata Pelajaran: {exams.find(e => String(e.id) === String(activeExamId))?.title || '-'}</p><hr className="border-black my-4"/><table className="w-full text-left font-bold text-lg mb-6"><tbody><tr><td width="20%">Nama Siswa</td><td>: {selectedResult.users?.name}</td><td rowSpan="2" className="text-right text-3xl">Nilai: {selectedResult.score}</td></tr><tr><td>Kelas</td><td>: {selectedResult.users?.kelas || '-'}</td></tr></tbody></table></div>
-              
-              <div className="space-y-6 print:space-y-4">
-                {questions.map((q, idx) => {
-                  const studentAns = selectedResult.answers[q.id]; const maxScore = parseInt(q.bobot) || 1; let obtainedScore = 0; let displayStudentAns = studentAns;
-                  if (studentAns && !(Array.isArray(studentAns) && studentAns.length === 0) && !(typeof studentAns === 'object' && Object.keys(studentAns).length === 0)) {
-                    if (q.type === 'PG') { if (studentAns === q.correct_answer) obtainedScore = maxScore; }
-                    else if (q.type === 'PGK') { const aA = Array.isArray(studentAns)?studentAns:[]; const cA = Array.isArray(q.correct_answer)?q.correct_answer:[]; let c = 0, w = 0; aA.forEach(v => { if (cA.includes(v)) c++; else w++; }); let ratio = (c - w) / cA.length; obtainedScore = (ratio < 0 ? 0 : ratio) * maxScore; displayStudentAns = aA.join(', '); }
-                    else if (q.type === 'BS') { const aO = studentAns || {}; let c = 0; q.correct_answer.forEach((k, i) => { if (aO[i] === k) c++; }); obtainedScore = (c / q.correct_answer.length) * maxScore; displayStudentAns = q.options.map((opt, i) => `${opt} (${aO[i] || '-'})`).join(', '); }
-                    else if (q.type === 'IS') { if (String(studentAns).trim().toLowerCase() === String(q.correct_answer).trim().toLowerCase()) obtainedScore = maxScore; }
-                    else if (q.type === 'M') { const aM = studentAns || {}; let c = 0; q.correct_answer.forEach((k, i) => { if (aM[i] === k) c++; }); obtainedScore = (c / q.correct_answer.length) * maxScore; displayStudentAns = q.options.map((opt, i) => `${opt} ➜ ${aM[i] || '-'}`).join(' | '); }
-                  }
-                  
-                  let boxBorder = 'border-red-300 bg-red-50'; let statusIcon = <XCircle size={18} className="text-red-600 shrink-0 print:hidden"/>; let badge = <span className="text-xs font-bold bg-red-100 text-red-800 px-2 py-0.5 rounded border border-red-300 print:text-black print:border-black">Skor: 0 / {maxScore}</span>;
-                  if (q.type === 'U') { boxBorder = 'border-blue-300 bg-blue-50'; statusIcon = <CheckCircle size={18} className="text-blue-600 shrink-0 print:hidden"/>; badge = <span className="text-xs font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded border border-blue-300 print:text-black print:border-black">Menunggu Koreksi</span>; } 
-                  else if (!studentAns || (Array.isArray(studentAns) && studentAns.length === 0)) { badge = <span className="text-xs font-bold bg-gray-200 text-gray-800 px-2 py-0.5 rounded border border-gray-400 print:text-black print:border-black">Kosong (Skor: 0 / {maxScore})</span>; } 
-                  else if (obtainedScore >= maxScore * 0.99) { boxBorder = 'border-green-300 bg-green-50'; statusIcon = <CheckCircle size={18} className="text-green-600 shrink-0 print:hidden"/>; badge = <span className="text-xs font-bold bg-green-100 text-green-800 px-2 py-0.5 rounded border border-green-300 print:text-black print:border-black">Skor: {maxScore} / {maxScore} (Sempurna)</span>; } 
-                  else if (obtainedScore > 0) { boxBorder = 'border-yellow-300 bg-yellow-50'; statusIcon = <AlertTriangle size={18} className="text-yellow-600 shrink-0 print:hidden"/>; badge = <span className="text-xs font-bold bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded border border-yellow-400 print:text-black print:border-black">Skor: {Number(obtainedScore.toFixed(2))} / {maxScore} (Parsial)</span>; }
-
-                  let keyStr = ""; if (q.type === 'BS') keyStr = q.options.map((opt, i) => `${opt} (${q.correct_answer[i]})`).join(', '); else if (q.type === 'M') keyStr = q.options.map((opt, i) => `${opt} ➜ ${q.correct_answer[i]}`).join('  |  '); else if (Array.isArray(q.correct_answer)) keyStr = q.correct_answer.join(', '); else keyStr = q.correct_answer;
-                  return (
-                    <div key={q.id} className={`p-4 md:p-5 border rounded-lg ${boxBorder} print:bg-transparent print:border-black print:break-inside-avoid`}><div className="flex gap-2 font-semibold text-gray-800 border-b pb-3 mb-3 print:border-black"><span>{idx + 1}.</span><div className="w-full"><div className="flex justify-between items-center w-full mb-2"><span className="text-xs font-bold text-gray-500 print:text-black">Tipe: {q.type}</span>{badge}</div><div className="prose max-w-none text-sm md:text-base print:text-black" dangerouslySetInnerHTML={{ __html: q.content }} /></div></div>
-                      <div className="text-sm grid grid-cols-1 md:grid-cols-2 gap-4"><div><p className="text-gray-600 mb-1 font-bold print:text-black">Jawaban Siswa:</p><p className="font-medium flex items-start gap-2 print:text-black">{statusIcon}<span className="break-words font-bold">{displayStudentAns || 'Tidak dijawab'}</span></p></div><div><p className="text-gray-600 mb-1 font-bold print:text-black">Kunci Benar:</p><p className="font-medium text-indigo-700 break-words print:text-black">{keyStr}</p></div></div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* === TAB 4 & 5 (BANK SOAL & USER) DIPERTAHANKAN (Disembunyikan demi limit token, tetap ada di source Anda) === */}
-        {activeTab !== 'jadwal' && activeTab !== 'pantau' && activeTab !== 'hasil' && (
-           <p className="p-10 text-center text-gray-400 font-bold">Menu Anda (Bank Soal, Manajemen Siswa, Manajemen Guru) berjalan normal. Kode ini difokuskan pada pembaruan Live Proktor.</p>
-        )}
-
-      </div>
-    </div>
-  );
-}
+                    {results.map((
