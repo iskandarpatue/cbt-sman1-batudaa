@@ -94,20 +94,17 @@ export default function ExamCBT() {
   useEffect(() => {
     if (step !== 'EXAM' || isSubmitting) return;
 
-    // Heartbeat Ping (Setiap 10 Detik) & Cek "Tendangan" dari Pengawas
+    // Ping ke Live Proktor & Cek tendangan
     const pingTimer = setInterval(async () => {
       if (sessionId) {
         const { data } = await supabase.from('live_sessions').update({ 
           current_question_index: idxRef.current, last_active: new Date().toISOString() 
         }).eq('id', sessionId).select('status').single();
         
-        // JIKA PENGAWAS MENENDANG/MENGELUARKAN SISWA
         if (data && data.status === 'dikeluarkan') {
            alert('PENGUMUMAN PENTING:\nAnda telah dikeluarkan secara paksa dari ruang ujian oleh Pengawas/Guru.');
-           await supabase.from('live_sessions').delete().eq('id', sessionId); // Bersihkan sisa rekaman
+           await supabase.from('live_sessions').delete().eq('id', sessionId); 
            if (document.exitFullscreen && document.fullscreenElement) document.exitFullscreen().catch(()=>{});
-           
-           // Kembali ke Dasbor Awal dengan Tangan Kosong
            setExam(null); setInputToken(''); setAnswers({}); setSessionId(null); setStep('DASHBOARD');
         }
       }
