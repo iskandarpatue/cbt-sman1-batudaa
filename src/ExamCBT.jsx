@@ -8,10 +8,9 @@ export default function ExamCBT() {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   
   const [step, setStep] = useState('DASHBOARD');
-  
   const [inputToken, setInputToken] = useState('');
   const [exam, setExam] = useState(null);
-  const [sessionId, setSessionId] = useState(null); // Live session ID
+  const [sessionId, setSessionId] = useState(null); 
   
   const [questions, setQuestions] = useState([]);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -24,6 +23,7 @@ export default function ExamCBT() {
   const [zoomedImg, setZoomedImg] = useState(null);
   const [zoomScale, setZoomScale] = useState(1);
   const [showQuestionGrid, setShowQuestionGrid] = useState(false);
+  
   const [checkDND, setCheckDND] = useState(false);
   const [checkOverlay, setCheckOverlay] = useState(false);
   const [checkFocus, setCheckFocus] = useState(false);
@@ -49,7 +49,6 @@ export default function ExamCBT() {
       const { data: examData, error: examError } = await supabase.from('exams').select('*').eq('token', inputToken.toUpperCase()).eq('is_active', true).single();
       if (examError || !examData) { alert('Token tidak valid, kedaluwarsa, atau ujian ditutup!'); setIsLoading(false); return; }
 
-      // Cek Waktu Jadwal
       if (examData.schedule_date) {
         const now = new Date();
         const start = new Date(`${examData.schedule_date}T${examData.start_time || '00:00'}:00`);
@@ -61,9 +60,7 @@ export default function ExamCBT() {
       const { data: resultData } = await supabase.from('exam_results').select('id').eq('user_id', user.id).eq('exam_id', examData.id).single();
       if (resultData) { alert('Anda sudah pernah mengerjakan ujian ini.'); setIsLoading(false); return; }
 
-      setExam(examData);
-      setTimeLeft(examData.duration_minutes ? examData.duration_minutes * 60 : 3600);
-      setStep('CHECKLIST'); 
+      setExam(examData); setTimeLeft(examData.duration_minutes ? examData.duration_minutes * 60 : 3600); setStep('CHECKLIST'); 
     } catch (err) { alert('Gagal terhubung.'); }
     setIsLoading(false);
   };
@@ -97,12 +94,22 @@ export default function ExamCBT() {
   useEffect(() => {
     if (step !== 'EXAM' || isSubmitting) return;
 
-    // Heartbeat Ping (Setiap 10 Detik) lapor ke Proktor
+    // Heartbeat Ping (Setiap 10 Detik) & Cek "Tendangan" dari Pengawas
     const pingTimer = setInterval(async () => {
       if (sessionId) {
-        await supabase.from('live_sessions').update({ 
+        const { data } = await supabase.from('live_sessions').update({ 
           current_question_index: idxRef.current, last_active: new Date().toISOString() 
-        }).eq('id', sessionId);
+        }).eq('id', sessionId).select('status').single();
+        
+        // JIKA PENGAWAS MENENDANG/MENGELUARKAN SISWA
+        if (data && data.status === 'dikeluarkan') {
+           alert('PENGUMUMAN PENTING:\nAnda telah dikeluarkan secara paksa dari ruang ujian oleh Pengawas/Guru.');
+           await supabase.from('live_sessions').delete().eq('id', sessionId); // Bersihkan sisa rekaman
+           if (document.exitFullscreen && document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+           
+           // Kembali ke Dasbor Awal dengan Tangan Kosong
+           setExam(null); setInputToken(''); setAnswers({}); setSessionId(null); setStep('DASHBOARD');
+        }
       }
     }, 10000);
 
@@ -174,18 +181,13 @@ export default function ExamCBT() {
     newDoubtful.has(qId) ? newDoubtful.delete(qId) : newDoubtful.add(qId);
     setDoubtful(newDoubtful);
   };
-
-  const formatTime = (seconds) => {
-    const m = Math.floor(seconds / 60); const s = seconds % 60;
-    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  };
-
+  const formatTime = (seconds) => { const m = Math.floor(seconds / 60); const s = seconds % 60; return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`; };
   const handleContentClick = (e) => { if (e.target.tagName === 'IMG') { setZoomedImg(e.target.src); setZoomScale(1); } };
   const handleLogout = () => { localStorage.removeItem('user'); navigate('/'); };
 
   const isReadyToStart = checkDND && checkOverlay && checkFocus;
 
-  // ==== UI DASHBOARD & CHECKLIST (Dipangkas visual) ====
+  // ==== UI DASHBOARD ====
   if (step === 'DASHBOARD') {
     return (
       <div className="min-h-screen bg-gray-200 p-4 flex items-center justify-center font-sans">
@@ -207,6 +209,7 @@ export default function ExamCBT() {
     );
   }
 
+  // ==== UI CHECKLIST ====
   if (step === 'CHECKLIST') {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4 md:p-6 select-none w-full">
@@ -222,7 +225,7 @@ export default function ExamCBT() {
           <div className="space-y-3">
             <label className="flex items-start gap-3 p-3 bg-white border rounded-lg cursor-pointer"><input type="checkbox" checked={checkDND} onChange={(e) => setCheckDND(e.target.checked)} className="w-5 h-5 accent-blue-600" /><span className="text-sm font-medium text-gray-800">Aktifkan Jangan Ganggu (DND)</span></label>
             <label className="flex items-start gap-3 p-3 bg-white border rounded-lg cursor-pointer"><input type="checkbox" checked={checkOverlay} onChange={(e) => setCheckOverlay(e.target.checked)} className="w-5 h-5 accent-blue-600" /><span className="text-sm font-medium text-gray-800">Matikan Bola Pintas/Jendela Mengambang</span></label>
-            <label className="flex items-start gap-3 p-3 bg-white border rounded-lg cursor-pointer"><input type="checkbox" checked={checkFocus} onChange={(e) => setCheckFocus(e.target.checked)} className="w-5 h-5 accent-blue-600" /><span className="text-sm font-medium text-gray-800">Ujian tertutup jika keluar aplikasi.</span></label>
+            <label className="flex items-start gap-3 p-3 bg-white border rounded-lg cursor-pointer"><input type="checkbox" checked={checkFocus} onChange={(e) => setCheckFocus(e.target.checked)} className="w-5 h-5 accent-blue-600" /><span className="text-sm font-medium text-gray-800">Ujian tertutup otomatis jika layar terbelah.</span></label>
           </div>
         </div>
         <button onClick={siapkanSoal} disabled={!isReadyToStart || isLoading} className={`w-full max-w-md px-4 py-4 font-black text-white rounded-lg shadow-xl text-lg ${isReadyToStart ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400'}`}>SAYA SIAP MULAI</button>
@@ -230,6 +233,7 @@ export default function ExamCBT() {
     );
   }
 
+  // ==== UI SELESAI ====
   if (step === 'SELESAI') {
     return (
       <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4 font-sans select-none">
@@ -243,9 +247,9 @@ export default function ExamCBT() {
     );
   }
 
+  // ==== UI ANBK STYLE ====
   return (
     <div className="flex flex-col h-[100dvh] bg-[#f0f2f5] font-sans select-none overflow-hidden relative">
-      {/* ZOOM GAMBAR (MODAL) */}
       {zoomedImg && (
         <div className="fixed inset-0 z-[9999] bg-black bg-opacity-95 flex flex-col items-center justify-center p-4">
           <div className="absolute top-4 right-4 flex gap-3 z-50">
@@ -254,16 +258,15 @@ export default function ExamCBT() {
             <button onClick={() => setZoomedImg(null)} className="bg-red-600 text-white p-3 rounded-full font-bold ml-4"><X/></button>
           </div>
           <div className="overflow-auto w-full h-full flex items-center justify-center">
-            <img src={zoomedImg} alt="Zoomed" style={{ width: `${zoomScale * 100}%`, minWidth: '300px' }} className="border-4 border-gray-700 rounded" />
+            <img src={zoomedImg} alt="Zoomed" style={{ width: `${zoomScale * 100}%`, minWidth: '300px' }} className="border-4 border-gray-700 rounded shadow-2xl" />
           </div>
         </div>
       )}
 
-      {/* HEADER ANBK */}
       <header className="flex items-center justify-between p-3 md:px-6 md:py-3 text-white bg-blue-900 shrink-0 shadow-md">
         <div className="flex items-center gap-3">
           <div className="bg-white text-blue-900 p-1.5 md:p-2 rounded-lg font-black text-xs md:text-sm">SMAN 1</div>
-          <div><h1 className="text-sm md:text-lg font-bold leading-tight">{exam.title}</h1><p className="text-[10px] md:text-xs text-blue-200 font-medium">Ujian Berbasis Komputer</p></div>
+          <div><h1 className="text-sm md:text-lg font-bold leading-tight truncate max-w-[150px] md:max-w-[300px]">{exam.title}</h1><p className="text-[10px] md:text-xs text-blue-200 font-medium">Ujian Berbasis Komputer</p></div>
         </div>
         <div className="flex items-center gap-3">
           <div className="hidden md:flex items-center gap-2 text-sm bg-blue-800 px-3 py-1.5 rounded-full border border-blue-700"><div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div><span className="font-semibold">{user.name}</span></div>
@@ -271,36 +274,26 @@ export default function ExamCBT() {
         </div>
       </header>
 
-      {/* SUB-HEADER */}
       <div className="bg-white border-b shadow-sm shrink-0 flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-3">
            <span className="text-base md:text-xl font-black text-gray-800">Soal Nomor {currentIdx + 1}</span>
            <span className="hidden md:inline-block text-xs font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded tracking-wider uppercase">{questions[currentIdx]?.type}</span>
         </div>
         <div className="flex items-center gap-2">
-           <div className="flex items-center gap-2 bg-gray-100 px-3 py-1.5 md:px-4 md:py-2 rounded-full font-mono font-bold text-sm border">
-             <Clock size={16} className={timeLeft <= 300 ? 'text-red-500 animate-pulse' : 'text-gray-600'} />
-             <span className={timeLeft <= 300 ? 'text-red-600' : 'text-gray-800'}>{formatTime(timeLeft)}</span>
-           </div>
+           <div className="flex items-center gap-2 bg-gray-100 px-3 py-1.5 md:px-4 md:py-2 rounded-full font-mono font-bold text-sm border"><Clock size={16} className={timeLeft <= 300 ? 'text-red-500 animate-pulse' : 'text-gray-600'} /><span className={timeLeft <= 300 ? 'text-red-600' : 'text-gray-800'}>{formatTime(timeLeft)}</span></div>
            <button onClick={() => setShowQuestionGrid(!showQuestionGrid)} className="flex items-center gap-2 bg-blue-100 text-blue-800 px-3 py-1.5 md:px-4 md:py-2 rounded-full font-bold text-xs md:text-sm hover:bg-blue-200"><Grid size={16} /> <span className="hidden md:inline">Daftar Soal</span></button>
         </div>
       </div>
 
       <main className="flex-1 overflow-y-auto relative p-2 md:p-6">
-        
-        {/* PANEL DAFTAR SOAL MENGAMBANG */}
         {showQuestionGrid && (
           <div className="absolute top-2 right-2 md:top-6 md:right-6 w-72 md:w-80 bg-white shadow-2xl border rounded-xl z-50 flex flex-col max-h-[80%] overflow-hidden">
-             <div className="flex justify-between p-4 border-b bg-gray-50"><h3 className="font-bold text-gray-800">Daftar Soal</h3><button onClick={() => setShowQuestionGrid(false)} className="text-gray-500"><X size={20}/></button></div>
+             <div className="flex justify-between p-4 border-b bg-gray-50"><h3 className="font-bold text-gray-800">Daftar Soal</h3><button onClick={() => setShowQuestionGrid(false)} className="text-gray-500 hover:text-red-500"><X size={20}/></button></div>
              <div className="p-4 overflow-y-auto flex-1 grid grid-cols-5 gap-2">
                 {questions.map((q, idx) => {
-                  const isActive = idx === currentIdx;
-                  let bgColor = 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100';
-                  if (doubtful.has(q.id)) bgColor = 'bg-yellow-400 text-black border-yellow-500'; 
-                  else if (!!answers[q.id]) bgColor = 'bg-blue-600 text-white border-blue-700';
-                  return (
-                    <button key={q.id} onClick={() => { setCurrentIdx(idx); setShowQuestionGrid(false); }} className={`w-full aspect-square text-sm border-2 rounded font-bold ${bgColor} ${isActive ? 'ring-4 ring-black scale-110 z-10' : ''}`}>{idx + 1}</button>
-                  );
+                  const isActive = idx === currentIdx; let bgColor = 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100';
+                  if (doubtful.has(q.id)) bgColor = 'bg-yellow-400 text-black border-yellow-500'; else if (!!answers[q.id]) bgColor = 'bg-blue-600 text-white border-blue-700';
+                  return <button key={q.id} onClick={() => { setCurrentIdx(idx); setShowQuestionGrid(false); }} className={`w-full aspect-square text-sm border-2 rounded font-bold ${bgColor} ${isActive ? 'ring-4 ring-black scale-110 z-10' : ''}`}>{idx + 1}</button>;
                 })}
              </div>
           </div>
@@ -309,9 +302,8 @@ export default function ExamCBT() {
         <div className="bg-white rounded-xl shadow-sm border min-h-full flex flex-col max-w-6xl mx-auto">
           <div className="flex flex-col md:flex-row flex-1">
             <div className={`p-5 md:p-8 ${questions[currentIdx]?.type === 'M' || questions[currentIdx]?.type === 'BS' ? 'w-full md:w-1/2 md:border-r border-gray-200' : 'w-full'}`}>
-              <div className="prose max-w-none text-gray-800 [&_img]:border [&_img]:rounded leading-relaxed" onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: questions[currentIdx]?.content }} />
+              <div className="prose max-w-none text-gray-800 [&_img]:border [&_img]:rounded shadow-sm leading-relaxed" onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: questions[currentIdx]?.content }} />
             </div>
-
             <div className={`p-5 md:p-8 bg-[#fafafa] ${questions[currentIdx]?.type === 'M' || questions[currentIdx]?.type === 'BS' ? 'w-full md:w-1/2' : 'w-full border-t border-gray-200 mt-4 md:mt-0'}`}>
               <div className="space-y-3">
                 {questions[currentIdx]?.type === 'PG' && questions[currentIdx].options.map((opt, i) => (
@@ -321,7 +313,6 @@ export default function ExamCBT() {
                     <span className="flex-1 leading-relaxed text-gray-800" onClick={handleContentClick} dangerouslySetInnerHTML={{ __html: opt }}></span>
                   </label>
                 ))}
-
                 {questions[currentIdx]?.type === 'PGK' && (
                   <>
                     <p className="text-xs font-bold text-gray-500 mb-3 bg-gray-200 inline-block px-2 py-1 rounded">Pilih maks 3 jawaban:</p>
@@ -341,10 +332,9 @@ export default function ExamCBT() {
                     })}
                   </>
                 )}
-
                 {questions[currentIdx]?.type === 'BS' && (
                   <table className="w-full text-sm md:text-base text-left bg-white border rounded-xl overflow-hidden shadow-sm">
-                    <thead className="bg-blue-50 border-b"><tr><th className="p-4">Pernyataan</th><th className="p-4 text-center w-20">Benar</th><th className="p-4 text-center w-20">Salah</th></tr></thead>
+                    <thead className="bg-blue-50 border-b"><tr><th className="p-4 text-blue-900">Pernyataan</th><th className="p-4 text-center w-20">Benar</th><th className="p-4 text-center w-20">Salah</th></tr></thead>
                     <tbody>
                       {questions[currentIdx].options.map((opt, i) => {
                         const ansVal = (answers[questions[currentIdx].id] || {})[i];
@@ -358,25 +348,22 @@ export default function ExamCBT() {
                     </tbody>
                   </table>
                 )}
-
                 {questions[currentIdx]?.type === 'IS' && (
-                  <input type="text" placeholder="Jawaban Singkat..." className="w-full p-4 border-2 border-gray-300 rounded-xl focus:border-blue-600 font-bold text-gray-800 shadow-sm outline-none" value={answers[questions[currentIdx].id] || ''} onChange={(e) => setAnswers({ ...answers, [questions[currentIdx].id]: e.target.value })} />
+                  <input type="text" placeholder="Ketik jawaban singkat..." className="w-full md:w-1/2 p-4 border-2 border-gray-300 rounded-xl focus:border-blue-600 font-bold text-gray-800 text-lg shadow-sm outline-none" value={answers[questions[currentIdx].id] || ''} onChange={(e) => setAnswers({ ...answers, [questions[currentIdx].id]: e.target.value })} />
                 )}
-
                 {questions[currentIdx]?.type === 'U' && (
-                  <textarea placeholder="Ketik jawaban uraian..." rows={8} className="w-full p-4 border-2 border-gray-300 rounded-xl focus:border-blue-600 font-medium text-gray-800 shadow-sm outline-none" value={answers[questions[currentIdx].id] || ''} onChange={(e) => setAnswers({ ...answers, [questions[currentIdx].id]: e.target.value })} />
+                  <textarea placeholder="Ketik jawaban uraian..." rows={8} className="w-full p-4 border-2 border-gray-300 rounded-xl focus:border-blue-600 font-medium text-gray-800 shadow-sm outline-none leading-relaxed" value={answers[questions[currentIdx].id] || ''} onChange={(e) => setAnswers({ ...answers, [questions[currentIdx].id]: e.target.value })} />
                 )}
-
                 {questions[currentIdx]?.type === 'M' && (
                   <table className="w-full text-sm md:text-base text-left bg-white border rounded-xl overflow-hidden shadow-sm">
-                    <thead className="bg-blue-50 border-b"><tr><th className="p-4 w-1/2">Pernyataan Kiri</th><th className="p-4 w-1/2">Pasangan Kanan</th></tr></thead>
+                    <thead className="bg-blue-50 border-b"><tr><th className="p-4 w-1/2 text-blue-900">Pernyataan Kiri</th><th className="p-4 w-1/2 text-blue-900">Pasangan Kanan</th></tr></thead>
                     <tbody>
                       {questions[currentIdx].options.map((premise, i) => {
                         const ansVal = (answers[questions[currentIdx].id] || {})[i] || '';
                         return (
                           <tr key={i} className="border-b"><td className="p-4 font-medium">{i + 1}. {premise}</td>
                             <td className="p-4">
-                              <select className="w-full p-3 border-2 border-gray-300 rounded-lg outline-none font-bold" value={ansVal} onChange={(e) => { const qId = questions[currentIdx].id; setAnswers({ ...answers, [qId]: { ...(answers[qId] || {}), [i]: e.target.value } }); }}>
+                              <select className="w-full p-3 border-2 border-gray-300 rounded-lg outline-none font-bold text-blue-900" value={ansVal} onChange={(e) => { const qId = questions[currentIdx].id; setAnswers({ ...answers, [qId]: { ...(answers[qId] || {}), [i]: e.target.value } }); }}>
                                 <option value="">-- Pilih Jawaban --</option>
                                 {questions[currentIdx].shuffled_responses?.map((resp, rIdx) => <option key={rIdx} value={resp}>{resp}</option>)}
                               </select>
@@ -393,21 +380,20 @@ export default function ExamCBT() {
         </div>
       </main>
 
-      {/* FOOTER NAVIGASI (MERAH - KUNING - HIJAU) */}
       <footer className="bg-white border-t p-3 md:p-4 shrink-0 shadow-lg z-20">
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-2 md:gap-4">
-          <button onClick={() => setCurrentIdx(prev => Math.max(0, prev - 1))} disabled={currentIdx === 0} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-3 md:px-8 md:py-4 font-bold text-white bg-red-600 rounded-full hover:bg-red-700 disabled:opacity-40 text-xs md:text-sm shadow-md">
+          <button onClick={() => setCurrentIdx(prev => Math.max(0, prev - 1))} disabled={currentIdx === 0} className="flex-1 md:flex-none flex items-center justify-center gap-1 md:gap-2 px-3 py-3 md:px-8 md:py-4 font-bold text-white bg-red-600 rounded-full hover:bg-red-700 disabled:opacity-40 text-xs md:text-sm shadow-md whitespace-nowrap">
             <ChevronLeft size={18}/> <span className="hidden md:inline">Soal</span> Sebelumnya
           </button>
-          <label className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-3 md:px-10 md:py-4 font-bold text-yellow-900 bg-yellow-400 rounded-full cursor-pointer hover:bg-yellow-500 shadow-md text-xs md:text-sm">
+          <label className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-3 md:px-10 md:py-4 font-bold text-yellow-900 bg-yellow-400 rounded-full cursor-pointer hover:bg-yellow-500 shadow-md text-xs md:text-sm whitespace-nowrap">
             <input type="checkbox" checked={doubtful.has(questions[currentIdx]?.id)} onChange={toggleDoubt} className="w-4 h-4 accent-yellow-900" /> <HelpCircle size={16} className="hidden md:block"/> Ragu-Ragu
           </label>
           {currentIdx === questions.length - 1 ? (
-            <button onClick={() => handleSelesaiUjian(false)} disabled={isSubmitting} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-3 md:px-12 md:py-4 font-black text-white bg-blue-600 rounded-full shadow-md hover:bg-blue-700 disabled:opacity-70 text-xs md:text-base">
+            <button onClick={() => handleSelesaiUjian(false)} disabled={isSubmitting} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-3 md:px-12 md:py-4 font-black text-white bg-blue-600 rounded-full shadow-md hover:bg-blue-700 disabled:opacity-70 text-xs md:text-base whitespace-nowrap">
               {isSubmitting ? 'MENGIRIM...' : 'SELESAI UJIAN'}
             </button>
           ) : (
-            <button onClick={() => setCurrentIdx(prev => Math.min(questions.length - 1, prev + 1))} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-3 md:px-8 md:py-4 font-bold text-white bg-green-600 rounded-full shadow-md hover:bg-green-700 text-xs md:text-sm">
+            <button onClick={() => setCurrentIdx(prev => Math.min(questions.length - 1, prev + 1))} className="flex-1 md:flex-none flex items-center justify-center gap-1 md:gap-2 px-3 py-3 md:px-8 md:py-4 font-bold text-white bg-green-600 rounded-full shadow-md hover:bg-green-700 text-xs md:text-sm whitespace-nowrap">
               <span className="hidden md:inline">Soal</span> Selanjutnya <ChevronRight size={18}/>
             </button>
           )}
