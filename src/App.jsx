@@ -1,9 +1,14 @@
 import { useState, useEffect } from 'react';
+import { Routes, Route, useNavigate, BrowserRouter } from 'react-router-dom';
 import { supabase } from './supabaseClient';
-import { useNavigate } from 'react-router-dom';
 import { User, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
 
-export default function App() {
+// Mengimpor halaman lain agar bisa diakses oleh Router
+import Admin from './Admin';
+import ExamCBT from './ExamCBT';
+
+// --- KOMPONEN DESAIN LOGIN ---
+function LoginScreen() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -106,14 +111,24 @@ export default function App() {
             </button>
           </form>
         </div>
-
       </main>
 
-      {/* Footer Watermark */}
+      {/* Footer Watermark Khusus Sesuai Permintaan */}
       <footer className="w-full text-center py-6 text-[10px] md:text-xs font-bold text-gray-400 z-10 shrink-0">
         Created Pk Guru Iskandar-TimItSmanBatPan
       </footer>
 
     </div>
+  );
+}
+
+// --- PENGATUR JALAN UTAMA (ROUTER) ---
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<LoginScreen />} />
+      <Route path="/admin" element={<Admin />} />
+      <Route path="/exam" element={<ExamCBT />} />
+    </Routes>
   );
 }
