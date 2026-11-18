@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Routes, Route, useNavigate, BrowserRouter } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import { User, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
 
-// Mengimpor halaman lain agar bisa diakses oleh Router
+// Import Halaman Lain
 import Admin from './Admin';
 import ExamCBT from './ExamCBT';
 
@@ -122,13 +122,15 @@ function LoginScreen() {
   );
 }
 
-// --- PENGATUR JALAN UTAMA (ROUTER) ---
+// --- PENGATUR JALAN UTAMA (ROUTER DI SINI) ---
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<LoginScreen />} />
-      <Route path="/admin" element={<Admin />} />
-      <Route path="/exam" element={<ExamCBT />} />
-    </Routes>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<LoginScreen />} />
+        <Route path="/admin" element={<Admin />} />
+        <Route path="/exam" element={<ExamCBT />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
