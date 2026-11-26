@@ -1,15 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback, memo } from 'react';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import { Save, X } from 'lucide-react';
 
-// Konfigurasi Toolbar Lengkap untuk Teks Stimulus/Soal Utama
+// Konfigurasi Toolbar
 const modulesLengkap = {
   toolbar: [
     [{ 'header': [1, 2, 3, false] }],
     ['bold', 'italic', 'underline', 'strike'],
     [{ 'color': [] }, { 'background': [] }],
-    [{ 'script': 'sub'}, { 'script': 'super' }], // Sangat penting untuk soal Fisika/Kimia
+    [{ 'script': 'sub'}, { 'script': 'super' }],
     [{ 'list': 'ordered'}, { 'list': 'bullet' }],
     [{ 'align': [] }],
     ['link', 'image', 'video'],
@@ -17,7 +17,6 @@ const modulesLengkap = {
   ],
 };
 
-// Konfigurasi Toolbar Simpel untuk Opsi Jawaban
 const modulesSimpel = {
   toolbar: [
     ['bold', 'italic', 'underline'],
@@ -27,28 +26,63 @@ const modulesSimpel = {
   ],
 };
 
+// 1. SOLUSI KURSOR HILANG: Bungkus Quill dengan React.memo
+// Komponen ini tidak akan me-render ulang dirinya kecuali valuenya benar-benar berubah,
+// sehingga kursor dijamin tidak akan terlepas saat mengetik.
+const EditorAman = memo(({ value, onChange, modules, className }) => {
+  return (
+    <ReactQuill 
+      theme="snow"
+      value={value}
+      onChange={onChange}
+      modules={modules}
+      className={className}
+    />
+  );
+});
+
 export default function FormSoal({ onSave, onCancel, dataAwal = null }) {
-  // State untuk menyimpan data soal
   const [tipeSoal, setTipeSoal] = useState(dataAwal?.type || 'PG');
   const [kontenSoal, setKontenSoal] = useState(dataAwal?.content || '');
   const [opsiJawaban, setOpsiJawaban] = useState(
-    dataAwal?.options || ['', '', '', '', ''] // Default 5 opsi (A, B, C, D, E)
+    dataAwal?.options || ['', '', '', '', '']
   );
-  const [kunciJawaban, setKunciJawaban] = useState(dataAwal?.correct_answer || '');
+  
+  // 2. SOLUSI BUG RADIO BUTTON: Gunakan Index (0, 1, 2, 3, 4)
+  // Menyimpan string HTML langsung akan merusak centang jika teks opsi diedit.
+  const [kunciIndex, setKunciIndex] = useState(() => {
+    if (dataAwal?.type === 'PG' && dataAwal?.options && dataAwal?.correct_answer) {
+      return dataAwal.options.indexOf(dataAwal.correct_answer);
+    }
+    return null; // Null berarti belum ada jawaban dipilih
+  });
+
+  // State khusus isian singkat
+  const [kunciSingkat, setKunciSingkat] = useState(
+    dataAwal?.type === 'IS' ? dataAwal?.correct_answer : ''
+  );
+  
   const [bobot, setBobot] = useState(dataAwal?.bobot || 1);
 
-  const handleOpsiChange = (index, value) => {
-    const opsiBaru = [...opsiJawaban];
-    opsiBaru[index] = value;
-    setOpsiJawaban(opsiBaru);
-  };
+  // 3. Gunakan useCallback agar memori fungsi tidak berubah tiap kali ngetik
+  const handleOpsiChange = useCallback((index, value) => {
+    setOpsiJawaban((prev) => {
+      const opsiBaru = [...prev];
+      opsiBaru[index] = value;
+      return opsiBaru;
+    });
+  }, []);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     
-    // Validasi sederhana sebelum simpan
     if (!kontenSoal.trim() || kontenSoal === '<p><br></p>') {
       alert('Isi soal tidak boleh kosong!');
+      return;
+    }
+
+    if (tipeSoal === 'PG' && kunciIndex === null) {
+      alert('Pilih salah satu kunci jawaban terlebih dahulu!');
       return;
     }
 
@@ -56,11 +90,11 @@ export default function FormSoal({ onSave, onCancel, dataAwal = null }) {
       type: tipeSoal,
       content: kontenSoal,
       options: tipeSoal === 'PG' ? opsiJawaban : null,
-      correct_answer: kunciJawaban,
+      // Konversi index kembali menjadi teks jawaban saat disimpan ke database
+      correct_answer: tipeSoal === 'PG' ? opsiJawaban[kunciIndex] : kunciSingkat,
       bobot: parseInt(bobot)
     };
 
-    // Kirim data kembali ke parent component (Admin.jsx) untuk di-insert/update ke Supabase
     onSave(dataSoal);
   };
 
@@ -109,12 +143,11 @@ export default function FormSoal({ onSave, onCancel, dataAwal = null }) {
             Isi Pertanyaan / Stimulus (Bisa copy-paste dari Word/Gambar)
           </label>
           <div className="bg-white rounded-lg border border-gray-300 overflow-hidden">
-            <ReactQuill 
-              theme="snow"
+            <EditorAman 
               value={kontenSoal}
               onChange={setKontenSoal}
               modules={modulesLengkap}
-              className="h-64 mb-12" // Margin bottom agar area toolbar bawah tidak tertutup
+              className="h-64 mb-12" 
             />
           </div>
         </div>
@@ -128,18 +161,18 @@ export default function FormSoal({ onSave, onCancel, dataAwal = null }) {
             
             <div className="space-y-4">
               {opsiJawaban.map((opsi, idx) => (
-                <div key={idx} className={`p-4 rounded-xl border-2 ${kunciJawaban === opsi && opsi !== '' ? 'border-green-500 bg-green-50' : 'border-gray-200'}`}>
+                <div key={`opsi-${idx}`} className={`p-4 rounded-xl border-2 ${kunciIndex === idx ? 'border-green-500 bg-green-50' : 'border-gray-200'}`}>
                   <div className="flex items-start gap-4">
                     
-                    {/* Radio Button untuk set Kunci Jawaban */}
+                    {/* Radio Button untuk set Kunci Jawaban menggunakan Index */}
                     <div className="pt-2">
                       <input 
                         type="radio" 
                         name="kunci_pg"
                         title="Jadikan Kunci Jawaban"
                         className="w-5 h-5 accent-green-600 cursor-pointer"
-                        checked={kunciJawaban === opsi && opsi !== ''}
-                        onChange={() => setKunciJawaban(opsi)}
+                        checked={kunciIndex === idx}
+                        onChange={() => setKunciIndex(idx)}
                       />
                     </div>
                     
@@ -150,8 +183,7 @@ export default function FormSoal({ onSave, onCancel, dataAwal = null }) {
                     
                     {/* Editor Opsi */}
                     <div className="flex-1 bg-white rounded overflow-hidden">
-                      <ReactQuill 
-                        theme="snow"
+                      <EditorAman 
                         value={opsi}
                         onChange={(val) => handleOpsiChange(idx, val)}
                         modules={modulesSimpel}
@@ -171,7 +203,7 @@ export default function FormSoal({ onSave, onCancel, dataAwal = null }) {
             <label className="block text-sm font-bold text-gray-700 mb-2">Kunci Jawaban Singkat</label>
             <input 
               type="text" 
-              value={kunciJawaban} onChange={(e) => setKunciJawaban(e.target.value)}
+              value={kunciSingkat} onChange={(e) => setKunciSingkat(e.target.value)}
               placeholder="Ketik kunci jawaban eksak..."
               className="w-full p-4 border-2 border-gray-300 rounded-lg focus:border-blue-500 outline-none font-bold"
             />
