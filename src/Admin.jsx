@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from './supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import { FileText, Users, PlusCircle, CheckCircle, XCircle, AlertTriangle, Edit, Trash2, UserPlus, BarChart2, Upload, Download, Menu, X, ShieldCheck, LogOut, Printer, Filter, Key, Activity, Calendar, Clock as ClockIcon, RefreshCw, XSquare } from 'lucide-react';
@@ -8,7 +8,7 @@ export default function Admin() {
   const navigate = useNavigate();
   const loggedInUser = JSON.parse(localStorage.getItem('user') || '{}');
 
-  const [activeTab, setActiveTab] = useState('jadwal'); 
+  const [activeTab, setActiveTab] = useState('jadwal');
   const [exams, setExams] = useState([]);
   const [activeExamId, setActiveExamId] = useState(null);
   const [token, setToken] = useState('');
@@ -57,7 +57,7 @@ export default function Admin() {
   const [passwordSiswa, setPasswordSiswa] = useState('');
   const [isEditingSiswa, setIsEditingSiswa] = useState(false);
   const [editSiswaId, setEditSiswaId] = useState(null);
-  const [filterKelas, setFilterKelas] = useState(''); 
+  const [filterKelas, setFilterKelas] = useState('');
 
   const [namaGuru, setNamaGuru] = useState('');
   const [mapelGuru, setMapelGuru] = useState('');
@@ -65,12 +65,17 @@ export default function Admin() {
   const [passwordGuru, setPasswordGuru] = useState('');
   const [isEditingGuru, setIsEditingGuru] = useState(false);
   const [editGuruId, setEditGuruId] = useState(null);
-  
+
   const [isUploadingCSV, setIsUploadingCSV] = useState(false);
   const [isUploadingSoalCSV, setIsUploadingSoalCSV] = useState(false);
 
   const editor = useRef(null);
-  const editorConfig = { readonly: false, height: 350, uploader: { insertImageAsBase64URI: true }, buttons: ['bold', 'italic', 'underline', 'superscript', 'subscript', 'ul', 'ol', 'image', 'table', 'symbol'] };
+  const editorConfig = useMemo(() => ({
+    readonly: false,
+    height: 350,
+    uploader: { insertImageAsBase64URI: true },
+    buttons: ['bold', 'italic', 'underline', 'superscript', 'subscript', 'ul', 'ol', 'image', 'table', 'symbol']
+  }), []);
 
   useEffect(() => {
     if (!loggedInUser.id) { navigate('/'); return; }
@@ -163,7 +168,7 @@ export default function Admin() {
     const isDone = sess.status === 'selesai';
     const msg = isDone ? `Reset ujian ${sess.users?.name}? Nilai akan dihapus.` : `Keluarkan ${sess.users?.name} dari ujian saat ini?`;
     if (!window.confirm(msg)) return;
-    
+
     if (isDone) {
       await supabase.from('exam_results').delete().eq('user_id', sess.user_id).eq('exam_id', sess.exam_id);
       await supabase.from('live_sessions').delete().eq('id', sess.id);
@@ -207,24 +212,24 @@ export default function Admin() {
     if (!window.confirm(`Yakin menghapus ujian ini permanen?`)) return;
     await supabase.from('exam_results').delete().eq('exam_id', id); await supabase.from('questions').delete().eq('exam_id', id); await supabase.from('live_sessions').delete().eq('exam_id', id); await supabase.from('exams').delete().eq('id', id); fetchExamsList();
   };
-  
+
   const simpanSiswa = async (e) => {
     e.preventDefault(); const payload = { name: namaSiswa, kelas: kelasSiswa, username: usernameSiswa, password: passwordSiswa, role: 'siswa' };
     if (isEditingSiswa) { await supabase.from('users').update(payload).eq('id', editSiswaId); resetFormSiswa(); fetchUsers(); } else { await supabase.from('users').insert([payload]); resetFormSiswa(); fetchUsers(); }
   };
   const resetFormSiswa = () => { setNamaSiswa(''); setKelasSiswa(''); setUsernameSiswa(''); setPasswordSiswa(''); setIsEditingSiswa(false); setEditSiswaId(null); };
   const handleEditSiswaClick = (s) => { setNamaSiswa(s.name); setKelasSiswa(s.kelas || ''); setUsernameSiswa(s.username); setPasswordSiswa(s.password); setIsEditingSiswa(true); setEditSiswaId(s.id); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-  
+
   const simpanGuru = async (e) => {
     e.preventDefault(); const payload = { name: namaGuru, kelas: mapelGuru, username: usernameGuru, password: passwordGuru, role: 'guru' };
     if (isEditingGuru) { await supabase.from('users').update(payload).eq('id', editGuruId); resetFormGuru(); fetchUsers(); } else { await supabase.from('users').insert([payload]); resetFormGuru(); fetchUsers(); }
   };
   const resetFormGuru = () => { setNamaGuru(''); setMapelGuru(''); setUsernameGuru(''); setPasswordGuru(''); setIsEditingGuru(false); setEditGuruId(null); };
   const handleEditGuruClick = (g) => { setNamaGuru(g.name); setMapelGuru(g.kelas || ''); setUsernameGuru(g.username); setPasswordGuru(g.password); setIsEditingGuru(true); setEditGuruId(g.id); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-  
+
   const hapusUser = async (id, roleName) => { if(window.confirm(`Yakin hapus akun ${roleName} ini?`)) { await supabase.from('users').delete().eq('id', id); fetchUsers(); } };
 
-  // FUNGSI EKSPOR 
+  // FUNGSI EKSPOR
   const unduhLaporanKlasikalWord = () => {
     if (results.length === 0) return alert('Belum ada data nilai.');
     const curExam = exams.find(e => String(e.id) === String(activeExamId));
@@ -304,8 +309,8 @@ export default function Admin() {
         const rawCols = rows[i].split(',').map(col => col.replace(/^"(.*)"$/, '$1').trim());
         if (rawCols.length >= 8) {
           const tipe = rawCols[0].toUpperCase(); const pertanyaan = rawCols[1]; const bobot = parseInt(rawCols[8]) || 1; const kunciRaw = rawCols[7]; let options = []; let correct_answer = null;
-          if (tipe === 'PG') { options = [rawCols[2], rawCols[3], rawCols[4], rawCols[5]||'', rawCols[6]||''].filter(o => o !== ''); correct_answer = kunciRaw; } 
-          else if (tipe === 'PGK') { options = [rawCols[2], rawCols[3], rawCols[4], rawCols[5]||'', rawCols[6]||''].filter(o => o !== ''); correct_answer = kunciRaw.split(';').map(k => k.trim()); } 
+          if (tipe === 'PG') { options = [rawCols[2], rawCols[3], rawCols[4], rawCols[5]||'', rawCols[6]||''].filter(o => o !== ''); correct_answer = kunciRaw; }
+          else if (tipe === 'PGK') { options = [rawCols[2], rawCols[3], rawCols[4], rawCols[5]||'', rawCols[6]||''].filter(o => o !== ''); correct_answer = kunciRaw.split(';').map(k => k.trim()); }
           else if (tipe === 'BS') { options = [rawCols[2], rawCols[3], rawCols[4]].filter(o => o !== ''); correct_answer = kunciRaw.split(';').map(k => k.trim().toUpperCase()); }
           else if (tipe === 'IS' || tipe === 'U') { correct_answer = kunciRaw; }
           if (pertanyaan) newQuestions.push({ exam_id: activeExamId, type: tipe, content: `<p>${pertanyaan}</p>`, options: options, correct_answer: correct_answer, bobot: bobot });
@@ -333,28 +338,42 @@ export default function Admin() {
   const resetForm = () => { setTipeSoal('PG'); setBobotSoal(1); setSoalText(''); setOpsiPG(['', '', '', '', '']); setKunciPG(0); setOpsiPGK(['', '', '', '', '']); setKunciPGK([]); setOpsiBS(['', '', '']); setKunciBS(['B', 'B', 'B']); setKunciIS(''); setKunciU(''); setPasanganM([{kiri: '', kanan: ''}, {kiri: '', kanan: ''}]); setIsEditing(false); setEditQuestionId(null); };
 
   const handleSimpanSoal = async (e) => {
-    e.preventDefault(); if (!activeExamId || !soalText) return alert('Pilih Token & isi soal!');
+    e.preventDefault();
+    const latestContent = editor.current?.value ?? soalText;
+    if (!activeExamId || !latestContent || latestContent.trim() === '' || latestContent === '<p><br></p>') {
+      return alert('Pilih Token & isi soal!');
+    }
     let optionsToSave = [], answerToSave = null;
     if (tipeSoal === 'PG') { optionsToSave = opsiPG; answerToSave = opsiPG[kunciPG]; }
-    else if (tipeSoal === 'PGK') { if (kunciPGK.length === 0 || kunciPGK.length > 3) return alert('Pilih maks 3 jawaban!'); optionsToSave = opsiPGK; answerToSave = kunciPGK.map(idx => opsiPGK[idx]); } 
+    else if (tipeSoal === 'PGK') { if (kunciPGK.length === 0 || kunciPGK.length > 3) return alert('Pilih maks 3 jawaban!'); optionsToSave = opsiPGK; answerToSave = kunciPGK.map(idx => opsiPGK[idx]); }
     else if (tipeSoal === 'BS') { optionsToSave = opsiBS; answerToSave = kunciBS; }
     else if (tipeSoal === 'IS' || tipeSoal === 'U') { answerToSave = tipeSoal==='IS'?kunciIS:kunciU; }
     else if (tipeSoal === 'M') { optionsToSave = pasanganM.map(p => p.kiri); answerToSave = pasanganM.map(p => p.kanan); }
 
-    const payload = { exam_id: activeExamId, type: tipeSoal, content: soalText, options: optionsToSave, correct_answer: answerToSave, bobot: parseInt(bobotSoal) || 1 };
-    if (isEditing) { await supabase.from('questions').update(payload).eq('id', editQuestionId); alert('Soal diperbarui!'); } 
+    const payload = { exam_id: activeExamId, type: tipeSoal, content: latestContent, options: optionsToSave, correct_answer: answerToSave, bobot: parseInt(bobotSoal) || 1 };
+    if (isEditing) { await supabase.from('questions').update(payload).eq('id', editQuestionId); alert('Soal diperbarui!'); }
     else { await supabase.from('questions').insert([payload]); alert('Soal ditambahkan!'); }
     resetForm(); changeActiveExam(activeExamId, token);
   };
 
   const handleEditClick = (q) => {
-    setTipeSoal(q.type); setBobotSoal(q.bobot || 1); setSoalText(q.content); setIsEditing(true); setEditQuestionId(q.id);
-    if (q.type === 'PG') { setOpsiPG(q.options); setKunciPG(q.options.indexOf(q.correct_answer)); }
-    else if (q.type === 'PGK') { setOpsiPGK(q.options); setKunciPGK(q.correct_answer.map(ans => q.options.indexOf(ans))); }
-    else if (q.type === 'BS') { setOpsiBS(q.options); setKunciBS(q.correct_answer); }
-    else if (q.type === 'IS') { setKunciIS(q.correct_answer); }
-    else if (q.type === 'U') { setKunciU(q.correct_answer); }
-    else if (q.type === 'M') { setPasanganM(q.options.map((opt, i) => ({ kiri: opt, kanan: q.correct_answer[i] }))); }
+    setTipeSoal(q.type); setBobotSoal(q.bobot || 1); setSoalText(q.content || ''); setIsEditing(true); setEditQuestionId(q.id);
+    if (q.type === 'PG') {
+      const opts = Array.isArray(q.options) ? q.options : ['', '', '', '', ''];
+      setOpsiPG(opts);
+      const foundIdx = opts.indexOf(q.correct_answer);
+      setKunciPG(foundIdx >= 0 ? foundIdx : 0);
+    }
+    else if (q.type === 'PGK') {
+      const opts = Array.isArray(q.options) ? q.options : ['', '', '', '', ''];
+      const ansArr = Array.isArray(q.correct_answer) ? q.correct_answer : [];
+      setOpsiPGK(opts);
+      setKunciPGK(ansArr.map(ans => opts.indexOf(ans)).filter(idx => idx >= 0));
+    }
+    else if (q.type === 'BS') { setOpsiBS(q.options || ['', '', '']); setKunciBS(q.correct_answer || ['B', 'B', 'B']); }
+    else if (q.type === 'IS') { setKunciIS(q.correct_answer || ''); }
+    else if (q.type === 'U') { setKunciU(q.correct_answer || ''); }
+    else if (q.type === 'M') { setPasanganM((q.options || []).map((opt, i) => ({ kiri: opt, kanan: (q.correct_answer || [])[i] || '' }))); }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -417,15 +436,15 @@ export default function Admin() {
              <div><h1 className="text-base font-black text-gray-800 leading-tight">Portal Ujian</h1><p className="text-[10px] text-gray-500 font-bold uppercase">SMAN 1 Batudaa Pantai</p></div>
           </div>
         </div>
-        
+
         <div className="p-4 flex-1 space-y-2 overflow-y-auto">
           <NavItem id="jadwal" icon={Key} label="Jadwal & Token" />
           <NavItem id="pantau" icon={Activity} label="Pantau Peserta" />
           <NavItem id="hasil" icon={BarChart2} label="Analisis Hasil" />
-          
-          {/* DIPERBAIKI: Bank Soal kini tersedia untuk Admin DAN Guru */}
+
+          {/* Bank Soal tersedia untuk Admin DAN Guru */}
           <NavItem id="soal" icon={FileText} label="Bank Soal" />
-          
+
           {loggedInUser.role === 'admin' && (
             <>
               <NavItem id="siswa" icon={Users} label="Akun Siswa" />
@@ -441,7 +460,7 @@ export default function Admin() {
       </div>
 
       <div className="flex-1 p-4 md:p-10 overflow-y-auto print:p-0 print:overflow-visible">
-        
+
         {/* === TAB 1: JADWAL & TOKEN === */}
         {activeTab === 'jadwal' && (
           <div className="max-w-5xl mx-auto space-y-6">
@@ -559,7 +578,7 @@ export default function Admin() {
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {liveSessions.map(sess => {
-                        const isOffline = (new Date().getTime() - new Date(sess.last_active).getTime()) > 30000; 
+                        const isOffline = (new Date().getTime() - new Date(sess.last_active).getTime()) > 30000;
                         const isDone = sess.status === 'selesai';
                         let dotColor = 'bg-green-500 animate-pulse'; let statusLabel = 'Sedang Mengerjakan';
                         if (isDone) { dotColor = 'bg-blue-500'; statusLabel = 'Telah Selesai'; } else if (isOffline) { dotColor = 'bg-red-500'; statusLabel = 'Offline / Terputus'; }
@@ -610,7 +629,7 @@ export default function Admin() {
               </div>
 
               <div className="hidden print:block text-center mb-6"><h2 className="text-2xl font-bold">LAPORAN HASIL UJIAN CBT</h2><p className="text-lg">Mata Pelajaran: {exams.find(e => String(e.id) === String(activeExamId))?.title || '-'}</p><hr className="border-black mt-2"/></div>
-              
+
               {showAnalisisKelas && (
                 <div className="mb-8 p-6 bg-purple-50 border border-purple-200 rounded-xl print:border-none print:p-0 print:bg-transparent print:mb-4">
                   <h3 className="text-xl font-bold text-purple-900 mb-6 border-b border-purple-200 pb-2 print:text-black">A. Analisis Butir Soal Keseluruhan (Total Peserta: {results.length})</h3>
@@ -626,7 +645,7 @@ export default function Admin() {
                             else if (q.type === 'BS') { const aO = studentAns || {}; let c = 0; q.correct_answer.forEach((k, i) => { if (aO[i] === k) c++; }); obtainedScore = (c / q.correct_answer.length) * maxScore; }
                             else if (q.type === 'IS') { if (String(studentAns).trim().toLowerCase() === String(q.correct_answer).trim().toLowerCase()) obtainedScore = maxScore; }
                             else if (q.type === 'M') { const aM = studentAns || {}; let c = 0; q.correct_answer.forEach((k, i) => { if (aM[i] === k) c++; }); obtainedScore = (c / q.correct_answer.length) * maxScore; }
-                            
+
                             if (q.type === 'U') { kosong++; } else { if (obtainedScore >= maxScore * 0.99) benarPenuh++; else if (obtainedScore > 0) benarParsial++; else salah++; }
                           }
                         });
@@ -695,7 +714,7 @@ export default function Admin() {
                 <div className="flex gap-2 items-center"><button onClick={() => window.print()} className="px-4 py-2 bg-green-600 text-white font-bold rounded shadow hover:bg-green-700 flex items-center gap-2"><Printer size={16}/> Cetak</button><button onClick={() => unduhAnalisisIndividuWord(selectedResult)} className="px-4 py-2 bg-indigo-800 text-white font-bold rounded shadow hover:bg-indigo-900 flex items-center gap-2"><FileText size={16}/> Ekspor Word</button><button onClick={() => setSelectedResult(null)} className="ml-2 text-red-500 hover:bg-red-50 p-2 rounded-full font-bold"><X size={24}/></button></div>
               </div>
               <div className="hidden print:block text-center mb-6"><h2 className="text-2xl font-bold">LEMBAR EVALUASI SISWA</h2><p className="text-lg">Mata Pelajaran: {exams.find(e => String(e.id) === String(activeExamId))?.title || '-'}</p><hr className="border-black my-4"/><table className="w-full text-left font-bold text-lg mb-6"><tbody><tr><td width="20%">Nama Siswa</td><td>: {selectedResult.users?.name}</td><td rowSpan="2" className="text-right text-3xl">Nilai: {selectedResult.score}</td></tr><tr><td>Kelas</td><td>: {selectedResult.users?.kelas || '-'}</td></tr></tbody></table></div>
-              
+
               <div className="space-y-6 print:space-y-4">
                 {questions.map((q, idx) => {
                   const studentAns = selectedResult.answers[q.id]; const maxScore = parseInt(q.bobot) || 1; let obtainedScore = 0; let displayStudentAns = studentAns;
@@ -706,11 +725,11 @@ export default function Admin() {
                     else if (q.type === 'IS') { if (String(studentAns).trim().toLowerCase() === String(q.correct_answer).trim().toLowerCase()) obtainedScore = maxScore; }
                     else if (q.type === 'M') { const aM = studentAns || {}; let c = 0; q.correct_answer.forEach((k, i) => { if (aM[i] === k) c++; }); obtainedScore = (c / q.correct_answer.length) * maxScore; displayStudentAns = q.options.map((opt, i) => `${opt} ➜ ${aM[i] || '-'}`).join(' | '); }
                   }
-                  
+
                   let boxBorder = 'border-red-300 bg-red-50'; let statusIcon = <XCircle size={18} className="text-red-600 shrink-0 print:hidden"/>; let badge = <span className="text-xs font-bold bg-red-100 text-red-800 px-2 py-0.5 rounded border border-red-300 print:text-black print:border-black">Skor: 0 / {maxScore}</span>;
-                  if (q.type === 'U') { boxBorder = 'border-blue-300 bg-blue-50'; statusIcon = <CheckCircle size={18} className="text-blue-600 shrink-0 print:hidden"/>; badge = <span className="text-xs font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded border border-blue-300 print:text-black print:border-black">Menunggu Koreksi</span>; } 
-                  else if (!studentAns || (Array.isArray(studentAns) && studentAns.length === 0)) { badge = <span className="text-xs font-bold bg-gray-200 text-gray-800 px-2 py-0.5 rounded border border-gray-400 print:text-black print:border-black">Kosong (Skor: 0 / {maxScore})</span>; } 
-                  else if (obtainedScore >= maxScore * 0.99) { boxBorder = 'border-green-300 bg-green-50'; statusIcon = <CheckCircle size={18} className="text-green-600 shrink-0 print:hidden"/>; badge = <span className="text-xs font-bold bg-green-100 text-green-800 px-2 py-0.5 rounded border border-green-300 print:text-black print:border-black">Skor: {maxScore} / {maxScore} (Sempurna)</span>; } 
+                  if (q.type === 'U') { boxBorder = 'border-blue-300 bg-blue-50'; statusIcon = <CheckCircle size={18} className="text-blue-600 shrink-0 print:hidden"/>; badge = <span className="text-xs font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded border border-blue-300 print:text-black print:border-black">Menunggu Koreksi</span>; }
+                  else if (!studentAns || (Array.isArray(studentAns) && studentAns.length === 0)) { badge = <span className="text-xs font-bold bg-gray-200 text-gray-800 px-2 py-0.5 rounded border border-gray-400 print:text-black print:border-black">Kosong (Skor: 0 / {maxScore})</span>; }
+                  else if (obtainedScore >= maxScore * 0.99) { boxBorder = 'border-green-300 bg-green-50'; statusIcon = <CheckCircle size={18} className="text-green-600 shrink-0 print:hidden"/>; badge = <span className="text-xs font-bold bg-green-100 text-green-800 px-2 py-0.5 rounded border border-green-300 print:text-black print:border-black">Skor: {maxScore} / {maxScore} (Sempurna)</span>; }
                   else if (obtainedScore > 0) { boxBorder = 'border-yellow-300 bg-yellow-50'; statusIcon = <AlertTriangle size={18} className="text-yellow-600 shrink-0 print:hidden"/>; badge = <span className="text-xs font-bold bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded border border-yellow-400 print:text-black print:border-black">Skor: {Number(obtainedScore.toFixed(2))} / {maxScore} (Parsial)</span>; }
 
                   let keyStr = ""; if (q.type === 'BS') keyStr = q.options.map((opt, i) => `${opt} (${q.correct_answer[i]})`).join(', '); else if (q.type === 'M') keyStr = q.options.map((opt, i) => `${opt} ➜ ${q.correct_answer[i]}`).join('  |  '); else if (Array.isArray(q.correct_answer)) keyStr = q.correct_answer.join(', '); else keyStr = q.correct_answer;
@@ -725,7 +744,7 @@ export default function Admin() {
           </div>
         )}
 
-        {/* === TAB SOAL (REVISI: TERBUKA JUGA UNTUK GURU) === */}
+        {/* === TAB SOAL (TERBUKA UNTUK ADMIN DAN GURU) === */}
         {activeTab === 'soal' && (
           <div className="max-w-4xl mx-auto space-y-6 md:space-y-8 print:hidden">
             <div className="bg-gradient-to-r from-indigo-50 to-indigo-100 p-5 md:p-6 rounded-2xl shadow-sm border border-indigo-200">
@@ -784,9 +803,17 @@ export default function Admin() {
 
                 <div>
                   <label className="block font-bold mb-2 text-sm text-gray-700">Stimulus / Pertanyaan Inti</label>
-                  <div className="border rounded-xl overflow-hidden"><JoditEditor ref={editor} value={soalText} config={editorConfig} onBlur={newContent => setSoalText(newContent)} /></div>
+                  <div className="border rounded-xl overflow-hidden">
+                    <JoditEditor
+                      key={editQuestionId || 'new-question'}
+                      ref={editor}
+                      value={soalText}
+                      config={editorConfig}
+                      onBlur={(newContent) => setSoalText(newContent)}
+                    />
+                  </div>
                 </div>
-                
+
                 {tipeSoal === 'PG' && (
                   <div className="space-y-3 bg-gray-50 p-4 md:p-5 rounded-xl border border-gray-200">
                     <label className="block font-bold mb-3 text-indigo-900 border-b pb-2 text-sm">Ketik Opsi & Pilih 1 Kunci Jawaban (Bisa copas menurun dari Word)</label>
@@ -799,7 +826,7 @@ export default function Admin() {
                     ))}
                   </div>
                 )}
-                
+
                 {tipeSoal === 'PGK' && (
                   <div className="space-y-3 bg-gray-50 p-4 md:p-5 rounded-xl border border-gray-200">
                     <label className="block font-bold mb-3 text-indigo-900 border-b pb-2 text-sm">Ketik Opsi & Centang Semua Kunci (Maksimal 3)</label>
@@ -814,7 +841,7 @@ export default function Admin() {
                     ))}
                   </div>
                 )}
-                
+
                 {tipeSoal === 'BS' && (
                   <div className="space-y-4 bg-gray-50 p-4 md:p-5 rounded-xl border border-gray-200">
                     <label className="block font-bold mb-3 text-indigo-900 border-b pb-2 text-sm">Ketik 3 Pernyataan & Tentukan Kunci B/S-nya</label>
@@ -888,7 +915,7 @@ export default function Admin() {
                         </div>
                       </div>
                       <div className="prose max-w-none text-sm text-gray-800 mb-3 bg-white p-3 border rounded-lg" dangerouslySetInnerHTML={{ __html: q.content }}></div>
-                      
+
                       <div className="bg-green-50 border border-green-200 p-3 rounded-lg text-sm text-green-800 font-medium">
                         <span className="font-bold block mb-1">Kunci Jawaban:</span>
                         {q.type === 'PG' && q.correct_answer}
@@ -918,7 +945,7 @@ export default function Admin() {
         {activeTab === 'siswa' && loggedInUser.role === 'admin' && (
           <div className="max-w-5xl mx-auto space-y-6">
             <div><h2 className="text-2xl font-black text-gray-800">Manajemen Akun Siswa</h2><p className="text-gray-500 font-medium">Kelola data siswa yang akan mengikuti ujian.</p></div>
-            
+
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                  <h3 className="text-lg font-bold text-gray-800">{isEditingSiswa ? 'Edit Data Siswa' : 'Tambah Siswa Manual'}</h3>
@@ -995,7 +1022,7 @@ export default function Admin() {
         {activeTab === 'guru' && loggedInUser.role === 'admin' && (
           <div className="max-w-5xl mx-auto space-y-6">
             <div><h2 className="text-2xl font-black text-gray-800">Manajemen Akun Guru</h2><p className="text-gray-500 font-medium">Kelola akses guru / pengawas.</p></div>
-            
+
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
               <div className="flex justify-between items-center mb-6 border-b pb-3">
                  <h3 className="text-lg font-bold text-gray-800">{isEditingGuru ? 'Edit Data Guru' : 'Tambah Akun Guru'}</h3>
@@ -1033,7 +1060,7 @@ export default function Admin() {
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {teachers.map(g => (
-                      <tr key={g.id} className="hover:bg-gray-50">
+                      <tr key={g.id} className="hover:bg-indigo-50/30">
                         <td className="p-3 font-semibold text-gray-800">{g.name}</td>
                         <td className="p-3 text-gray-600">{g.kelas || '-'}</td>
                         <td className="p-3 font-mono text-xs">{g.username}</td>
