@@ -834,57 +834,78 @@ export default function Admin() {
                 {tipeSoal === 'IS' && (
                   <div className="space-y-3 bg-gray-50 p-4 md:p-5 rounded-xl border border-gray-200">
                     <label className="block font-bold mb-2 text-indigo-900 text-sm">Kunci Jawaban Singkat (Pastikan Ejaan Benar)</label>
-                    <input required type="text" className="w-full p-3 border rounded-lg focus:border-indigo-500 outline-none font-medium text-sm" value={kunciIS} onChange={(e) => setKunciIS(e.target.value)} placeholder="Contoh: Jakarta"/>
-                  </div>
-                )}
-
-                {tipeSoal === 'U' && (
-                  <div className="space-y-3 bg-gray-50 p-4 md:p-5 rounded-xl border border-gray-200">
-                    <label className="block font-bold mb-2 text-indigo-900 text-sm">Rubrik / Referensi Jawaban Uraian (Panduan Guru)</label>
-                    <textarea required rows={4} className="w-full p-3 border rounded-lg focus:border-indigo-500 outline-none text-sm" value={kunciU} onChange={(e) => setKunciU(e.target.value)} placeholder="Ketik panduan jawaban uraian di sini..."/>
+                    <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none text-sm" value={kunciIS} onChange={(e) => setKunciIS(e.target.value)} placeholder="Ketik jawaban di sini..."/>
                   </div>
                 )}
 
                 {tipeSoal === 'M' && (
                   <div className="space-y-4 bg-gray-50 p-4 md:p-5 rounded-xl border border-gray-200">
-                    <label className="block font-bold mb-3 text-indigo-900 border-b pb-2 text-sm">Ketik Pasangan Menjodohkan (Premis Kiri ➜ Jawaban Kanan)</label>
-                    {pasanganM.map((pair, idx) => (
-                      <div key={idx} className="flex flex-col md:flex-row gap-2 md:gap-3 items-start md:items-center">
-                        <span className="font-black text-gray-700">{idx + 1}.</span>
-                        <input required type="text" className="flex-1 p-2.5 border rounded-lg w-full focus:border-indigo-500 text-sm" value={pair.kiri} onChange={(e) => { const newP = [...pasanganM]; newP[idx].kiri = e.target.value; setPasanganM(newP); }} placeholder="Premis..."/>
-                        <span className="font-bold text-gray-500">➜</span>
-                        <input required type="text" className="flex-1 p-2.5 border rounded-lg w-full focus:border-indigo-500 text-sm" value={pair.kanan} onChange={(e) => { const newP = [...pasanganM]; newP[idx].kanan = e.target.value; setPasanganM(newP); }} placeholder="Pasangan..."/>
-                        {pasanganM.length > 2 && <button type="button" onClick={() => setPasanganM(pasanganM.filter((_, i) => i !== idx))} className="p-2 text-red-600 hover:bg-red-100 rounded" title="Hapus"><Trash2 size={16}/></button>}
+                    <label className="block font-bold mb-3 text-indigo-900 border-b pb-2 text-sm">Ketik Pasangan Jawaban</label>
+                    {pasanganM.map((pasangan, idx) => (
+                      <div key={idx} className="flex flex-col md:flex-row gap-3 items-center">
+                        <input required type="text" className="flex-1 p-2.5 border rounded-lg focus:border-indigo-500 outline-none text-sm" value={pasangan.kiri} onChange={(e) => { const newP = [...pasanganM]; newP[idx].kiri = e.target.value; setPasanganM(newP); }} placeholder={`Premis ${idx + 1}...`} />
+                        <span className="font-bold text-gray-400">➜</span>
+                        <input required type="text" className="flex-1 p-2.5 border rounded-lg focus:border-indigo-500 outline-none text-sm" value={pasangan.kanan} onChange={(e) => { const newP = [...pasanganM]; newP[idx].kanan = e.target.value; setPasanganM(newP); }} placeholder={`Jawaban ${idx + 1}...`} />
+                        <button type="button" onClick={() => setPasanganM(pasanganM.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-700 font-bold p-2"><X size={18}/></button>
                       </div>
                     ))}
-                    <button type="button" onClick={() => setPasanganM([...pasanganM, {kiri:'', kanan:''}])} className="flex items-center gap-2 px-4 py-2 bg-indigo-100 text-indigo-800 font-bold rounded-lg hover:bg-indigo-200 text-xs"><PlusCircle size={14}/> Tambah Pasangan</button>
+                    <button type="button" onClick={() => setPasanganM([...pasanganM, {kiri: '', kanan: ''}])} className="text-sm font-bold text-indigo-600 flex items-center gap-1 hover:text-indigo-800 mt-2"><PlusCircle size={16}/> Tambah Pasangan</button>
                   </div>
                 )}
 
-                <button type="submit" className={`w-full text-white font-bold py-3.5 rounded-xl shadow-md transition-all text-sm ${isEditing ? 'bg-yellow-500 text-yellow-900 hover:bg-yellow-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
-                  {isEditing ? 'SIMPAN PERUBAHAN SOAL' : 'TAMBAHKAN SOAL KE DATABASE'}
-                </button>
+                {tipeSoal === 'U' && (
+                  <div className="space-y-3 bg-gray-50 p-4 md:p-5 rounded-xl border border-gray-200">
+                    <label className="block font-bold mb-2 text-indigo-900 text-sm">Panduan/Kunci Jawaban Uraian (Untuk Panduan Korektor)</label>
+                    <textarea className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none text-sm min-h-[100px]" value={kunciU} onChange={(e) => setKunciU(e.target.value)} placeholder="Ketik poin-poin penting jawaban..."></textarea>
+                  </div>
+                )}
+
+                <div className="flex justify-end pt-4">
+                  <button type="submit" className="px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shadow-md transition-colors w-full md:w-auto flex items-center justify-center gap-2">
+                    {isEditing ? <><CheckCircle size={18}/> Simpan Perubahan</> : <><PlusCircle size={18}/> Tambah Soal</>}
+                  </button>
+                </div>
               </form>
             </div>
-            
-            <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border">
-              <h2 className="text-lg font-bold mb-4 border-b pb-2">Daftar Soal Tersimpan ({questions.length})</h2>
-              {questions.length === 0 ? <p className="text-center py-8 text-gray-500 font-medium text-sm">Belum ada soal.</p> : (
+
+            <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-gray-200 mt-8">
+              <h2 className="text-lg md:text-xl font-bold mb-4 border-b pb-3 text-gray-800 flex items-center gap-2"><FileText size={20} className="text-indigo-600"/> Daftar Soal ({questions.length})</h2>
+              {questions.length === 0 ? (
+                <div className="text-center p-8 bg-gray-50 border border-dashed border-gray-300 rounded-xl"><p className="text-gray-500 font-bold">Belum ada soal pada ujian ini.</p></div>
+              ) : (
                 <div className="space-y-4">
-                  {questions.map((q, idx) => (
-                    <div key={q.id} className="p-4 border rounded-xl bg-gray-50 hover:border-indigo-300 transition-colors">
-                      <div className="flex justify-between items-start mb-3 border-b border-gray-200 pb-2">
-                        <div className="flex items-center gap-3">
-                          <span className="font-black text-gray-800">No. {idx + 1}</span>
-                          <span className="text-xs font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded">{q.type}</span>
-                          <span className="text-xs font-bold bg-green-100 text-green-800 px-2 py-0.5 rounded">Poin: {q.bobot || 1}</span>
+                  {questions.map((q, index) => (
+                    <div key={q.id} className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex gap-2 items-center">
+                          <span className="font-bold text-gray-700">No. {index + 1}</span>
+                          <span className="text-xs font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full border border-indigo-200">{q.type}</span>
+                          <span className="text-xs font-bold text-gray-500 px-2">Bobot: {q.bobot || 1}</span>
                         </div>
                         <div className="flex gap-2">
-                          <button onClick={() => handleEditClick(q)} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded" title="Edit"><Edit size={16}/></button>
-                          <button onClick={() => handleHapusSoal(q.id)} className="p-1.5 text-red-600 hover:bg-red-100 rounded" title="Hapus"><Trash2 size={16}/></button>
+                          <button onClick={() => handleEditClick(q)} className="p-1.5 bg-white border border-gray-300 rounded text-gray-600 hover:bg-gray-100 hover:text-indigo-600"><Edit size={16}/></button>
+                          <button onClick={() => handleHapusSoal(q.id)} className="p-1.5 bg-white border border-red-300 rounded text-red-500 hover:bg-red-50"><Trash2 size={16}/></button>
                         </div>
                       </div>
-                      <div className="prose max-w-none text-sm text-gray-700 bg-white p-3 border rounded-lg shadow-sm overflow-x-auto" dangerouslySetInnerHTML={{ __html: q.content }} />
+                      <div className="prose max-w-none text-sm text-gray-800 mb-3 bg-white p-3 border rounded-lg" dangerouslySetInnerHTML={{ __html: q.content }}></div>
+                      
+                      <div className="bg-green-50 border border-green-200 p-3 rounded-lg text-sm text-green-800 font-medium">
+                        <span className="font-bold block mb-1">Kunci Jawaban:</span>
+                        {q.type === 'PG' && q.correct_answer}
+                        {q.type === 'PGK' && Array.isArray(q.correct_answer) && q.correct_answer.join(', ')}
+                        {q.type === 'BS' && (
+                          <ul className="list-disc list-inside">
+                            {q.options.map((opt, i) => <li key={i}>{opt} ➜ <b>{q.correct_answer[i]}</b></li>)}
+                          </ul>
+                        )}
+                        {q.type === 'IS' && q.correct_answer}
+                        {q.type === 'M' && (
+                          <ul className="list-disc list-inside">
+                            {q.options.map((opt, i) => <li key={i}>{opt} ➜ <b>{q.correct_answer[i]}</b></li>)}
+                          </ul>
+                        )}
+                        {q.type === 'U' && <span className="italic text-gray-600 break-words">{q.correct_answer}</span>}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -893,158 +914,145 @@ export default function Admin() {
           </div>
         )}
 
-        {/* === TAB SISWA (HANYA ADMIN) === */}
-        {loggedInUser.role === 'admin' && activeTab === 'siswa' && (
-          <div className="space-y-6 print:hidden">
-            <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-gray-200">
-              <h2 className="text-lg md:text-xl font-bold mb-2 flex items-center gap-2 text-gray-800"><UserPlus className="text-indigo-600"/> Upload Akun Siswa (CSV)</h2>
-              <div className="flex flex-col md:flex-row gap-3 mt-4">
-                <button onClick={unduhTemplateCSV} className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 font-bold rounded-lg hover:bg-gray-200 border text-sm">
-                  <Download size={16}/> Unduh Template
-                </button>
-                <div className="flex-1 flex items-center">
-                  <label className="w-full flex items-center justify-center gap-2 cursor-pointer bg-white px-4 py-2.5 rounded-lg border border-dashed border-gray-400 hover:bg-gray-50">
-                    <Upload size={16} className="text-gray-500"/>
-                    <span className="text-sm font-bold text-gray-600">{isUploadingCSV ? 'Mengunggah...' : 'Pilih File CSV'}</span>
-                    <input type="file" accept=".csv" onChange={handleUploadCSV} disabled={isUploadingCSV} className="hidden" />
-                  </label>
-                </div>
+        {/* === TAB AKUN SISWA === */}
+        {activeTab === 'siswa' && loggedInUser.role === 'admin' && (
+          <div className="max-w-5xl mx-auto space-y-6">
+            <div><h2 className="text-2xl font-black text-gray-800">Manajemen Akun Siswa</h2><p className="text-gray-500 font-medium">Kelola data siswa yang akan mengikuti ujian.</p></div>
+            
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                 <h3 className="text-lg font-bold text-gray-800">{isEditingSiswa ? 'Edit Data Siswa' : 'Tambah Siswa Manual'}</h3>
+                 {isEditingSiswa && <button onClick={resetFormSiswa} className="text-red-500 font-bold text-sm">Batal Edit</button>}
               </div>
-            </div>
-
-            <div className={`bg-white p-5 md:p-6 rounded-2xl shadow-sm border ${isEditingSiswa ? 'border-yellow-400' : 'border-gray-200'}`}>
-              <div className="flex justify-between items-center mb-4 border-b pb-3">
-                <h2 className="text-lg font-bold text-gray-800">{isEditingSiswa ? 'Edit Akun Siswa' : 'Buat Akun Manual'}</h2>
-                {isEditingSiswa && <button type="button" onClick={resetFormSiswa} className="text-sm font-bold text-red-500 hover:text-red-700">Batal Edit</button>}
-              </div>
-              <form onSubmit={simpanSiswa} className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+              <form onSubmit={simpanSiswa} className="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <div className="md:col-span-2">
-                   <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Nama Lengkap</label>
-                   <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none bg-gray-50 focus:bg-white" value={namaSiswa} onChange={(e) => setNamaSiswa(e.target.value)} />
+                  <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none text-sm bg-gray-50 focus:bg-white" value={namaSiswa} onChange={(e) => setNamaSiswa(e.target.value)} placeholder="Nama Lengkap"/>
                 </div>
-                <div className="md:col-span-2">
-                   <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Kelas</label>
-                   <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none bg-gray-50 focus:bg-white" value={kelasSiswa} onChange={(e) => setKelasSiswa(e.target.value)} />
+                <div className="md:col-span-1">
+                  <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none text-sm bg-gray-50 focus:bg-white" value={kelasSiswa} onChange={(e) => setKelasSiswa(e.target.value)} placeholder="Kelas (Cth: X-A)"/>
                 </div>
-                <div className="md:col-span-2">
-                   <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Username (Cth: NISN)</label>
-                   <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none bg-gray-50 focus:bg-white" value={usernameSiswa} onChange={(e) => setUsernameSiswa(e.target.value)} />
+                <div className="md:col-span-1">
+                  <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none text-sm bg-gray-50 focus:bg-white" value={usernameSiswa} onChange={(e) => setUsernameSiswa(e.target.value)} placeholder="Username"/>
                 </div>
-                <div className="md:col-span-2">
-                   <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Password</label>
-                   <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none bg-gray-50 focus:bg-white" value={passwordSiswa} onChange={(e) => setPasswordSiswa(e.target.value)} />
+                <div className="md:col-span-1">
+                  <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none text-sm bg-gray-50 focus:bg-white" value={passwordSiswa} onChange={(e) => setPasswordSiswa(e.target.value)} placeholder="Password"/>
                 </div>
-                <button type="submit" className={`md:col-span-4 mt-2 text-white font-bold py-3 rounded-lg shadow-sm transition-colors ${isEditingSiswa ? 'bg-yellow-500 hover:bg-yellow-600 text-yellow-900' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
-                  {isEditingSiswa ? 'SIMPAN PERUBAHAN' : 'BUAT AKUN SISWA'}
-                </button>
+                <div className="md:col-span-5 flex justify-end">
+                  <button type="submit" className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors text-sm">{isEditingSiswa ? 'Update Siswa' : 'Simpan Siswa'}</button>
+                </div>
               </form>
             </div>
-            
-            <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border overflow-x-auto">
+
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-                <div className="flex flex-col md:flex-row items-start md:items-center gap-3">
-                  <h2 className="text-lg font-bold text-gray-800">Daftar Akun ({filteredStudents.length})</h2>
-                  <div className="flex items-center gap-2 bg-gray-100 px-3 py-1.5 rounded-lg border border-gray-200">
-                    <Filter size={16} className="text-gray-500"/>
-                    <select value={filterKelas} onChange={(e) => setFilterKelas(e.target.value)} className="bg-transparent text-sm font-bold text-gray-700 outline-none cursor-pointer">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-lg font-bold text-gray-800">Daftar Siswa</h3>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Filter size={16} className="text-gray-400"/>
+                    <select value={filterKelas} onChange={(e) => setFilterKelas(e.target.value)} className="border rounded-lg p-1.5 bg-gray-50 outline-none font-medium">
                       <option value="">Semua Kelas</option>
                       {uniqueKelas.map(k => <option key={k} value={k}>{k}</option>)}
                     </select>
                   </div>
                 </div>
-                <div className="flex gap-2 w-full md:w-auto">
-                  <button onClick={() => setIsPrintingCards(true)} className="flex-1 md:flex-none px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg font-bold flex items-center justify-center gap-2 text-sm shadow-sm hover:bg-gray-50">
-                    <Printer size={16}/> Cetak Kartu (PDF)
-                  </button>
-                  <button onClick={unduhKartuWord} className="flex-1 md:flex-none px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold flex items-center justify-center gap-2 text-sm shadow-sm hover:bg-indigo-700">
-                    <FileText size={16}/> Ekspor Word
-                  </button>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={unduhTemplateCSV} className="px-3 py-2 bg-gray-100 text-gray-700 font-bold rounded-lg hover:bg-gray-200 flex items-center gap-2 text-xs border"><Download size={14}/> Template CSV</button>
+                  <label className="px-3 py-2 bg-green-50 text-green-700 font-bold rounded-lg hover:bg-green-100 flex items-center gap-2 text-xs border border-green-200 cursor-pointer">
+                    <Upload size={14}/> {isUploadingCSV ? 'Proses...' : 'Upload CSV'}
+                    <input type="file" accept=".csv" onChange={handleUploadCSV} disabled={isUploadingCSV} className="hidden" />
+                  </label>
+                  <button onClick={() => setIsPrintingCards(true)} className="px-3 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 flex items-center gap-2 text-xs"><Printer size={14}/> Print Kartu</button>
+                  <button onClick={unduhKartuWord} className="px-3 py-2 bg-indigo-800 text-white font-bold rounded-lg hover:bg-indigo-900 flex items-center gap-2 text-xs"><FileText size={14}/> Word Kartu</button>
                 </div>
               </div>
-              
-              <table className="w-full text-left border-collapse text-sm">
-                <thead><tr className="bg-gray-50 border-y">
-                  <th className="p-3">Nama Lengkap</th><th className="p-3 hidden md:table-cell">Kelas</th><th className="p-3">Username</th><th className="p-3 text-right">Aksi</th>
-                </tr></thead>
-                <tbody className="divide-y divide-gray-100">
-                  {filteredStudents.map(s => (
-                    <tr key={s.id} className="hover:bg-gray-50">
-                      <td className="p-3 font-bold text-gray-800">{s.name} <div className="text-xs text-gray-500 md:hidden font-medium">{s.kelas}</div></td>
-                      <td className="p-3 hidden md:table-cell text-gray-600 font-medium">{s.kelas || '-'}</td>
-                      <td className="p-3 font-mono text-indigo-600 text-xs">{s.username}</td>
-                      <td className="p-3 text-right whitespace-nowrap">
-                        <button onClick={() => handleEditSiswaClick(s)} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded mr-1"><Edit size={16}/></button>
-                        <button onClick={() => hapusUser(s.id, 'Siswa')} className="p-1.5 text-red-600 hover:bg-red-100 rounded"><Trash2 size={16}/></button>
-                      </td>
-                    </tr>
-                  ))}
-                  {filteredStudents.length === 0 && (<tr><td colSpan="4" className="p-6 text-center text-gray-500">Data siswa tidak ditemukan.</td></tr>)}
-                </tbody>
-              </table>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm whitespace-nowrap">
+                  <thead className="bg-gray-50 text-gray-600 font-bold uppercase text-xs">
+                    <tr><th className="p-3">Nama</th><th className="p-3">Kelas</th><th className="p-3">Username</th><th className="p-3">Password</th><th className="p-3 text-right">Aksi</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {filteredStudents.map(s => (
+                      <tr key={s.id} className="hover:bg-gray-50">
+                        <td className="p-3 font-semibold text-gray-800">{s.name}</td>
+                        <td className="p-3 text-gray-600">{s.kelas}</td>
+                        <td className="p-3 font-mono text-xs">{s.username}</td>
+                        <td className="p-3 font-mono text-xs">{s.password}</td>
+                        <td className="p-3 flex justify-end gap-2">
+                          <button onClick={() => handleEditSiswaClick(s)} className="p-1.5 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"><Edit size={14}/></button>
+                          <button onClick={() => hapusUser(s.id, 'Siswa')} className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100"><Trash2 size={14}/></button>
+                        </td>
+                      </tr>
+                    ))}
+                    {filteredStudents.length === 0 && <tr><td colSpan="5" className="p-6 text-center text-gray-400 font-medium">Data siswa kosong.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
 
-        {/* === TAB GURU (HANYA ADMIN) === */}
-        {loggedInUser.role === 'admin' && activeTab === 'guru' && (
-          <div className="space-y-6 print:hidden">
-            <div className={`bg-white p-5 md:p-6 rounded-2xl shadow-sm border ${isEditingGuru ? 'border-yellow-400' : 'border-gray-200'}`}>
-              <div className="flex justify-between items-center mb-4 border-b pb-3">
-                <h2 className="text-lg font-bold text-gray-800">{isEditingGuru ? 'Edit Akun Guru' : 'Registrasi Akun Guru Baru'}</h2>
-                {isEditingGuru && <button type="button" onClick={resetFormGuru} className="text-sm font-bold text-red-500 hover:text-red-700">Batal Edit</button>}
+        {/* === TAB AKUN GURU === */}
+        {activeTab === 'guru' && loggedInUser.role === 'admin' && (
+          <div className="max-w-5xl mx-auto space-y-6">
+            <div><h2 className="text-2xl font-black text-gray-800">Manajemen Akun Guru</h2><p className="text-gray-500 font-medium">Kelola akses guru / pengawas.</p></div>
+            
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
+              <div className="flex justify-between items-center mb-6 border-b pb-3">
+                 <h3 className="text-lg font-bold text-gray-800">{isEditingGuru ? 'Edit Data Guru' : 'Tambah Akun Guru'}</h3>
+                 {isEditingGuru && <button onClick={resetFormGuru} className="text-red-500 font-bold text-sm">Batal Edit</button>}
               </div>
-              <form onSubmit={simpanGuru} className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <form onSubmit={simpanGuru} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                   <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Nama Lengkap (Beserta Gelar)</label>
-                   <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none bg-gray-50 focus:bg-white" value={namaGuru} onChange={(e) => setNamaGuru(e.target.value)} />
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Nama Lengkap Guru</label>
+                  <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none text-sm bg-gray-50" value={namaGuru} onChange={(e) => setNamaGuru(e.target.value)} placeholder="Misal: Budi Santoso, S.Pd"/>
                 </div>
                 <div>
-                   <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Mata Pelajaran yang Diampu</label>
-                   <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none bg-gray-50 focus:bg-white" value={mapelGuru} onChange={(e) => setMapelGuru(e.target.value)} />
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Mata Pelajaran (Opsional)</label>
+                  <input type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none text-sm bg-gray-50" value={mapelGuru} onChange={(e) => setMapelGuru(e.target.value)} placeholder="Misal: Fisika"/>
                 </div>
                 <div>
-                   <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Username Login</label>
-                   <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none bg-gray-50 focus:bg-white" value={usernameGuru} onChange={(e) => setUsernameGuru(e.target.value)} />
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Username (Untuk Login)</label>
+                  <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none text-sm bg-gray-50" value={usernameGuru} onChange={(e) => setUsernameGuru(e.target.value)} placeholder="username_guru"/>
                 </div>
                 <div>
-                   <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Password Login</label>
-                   <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none bg-gray-50 focus:bg-white" value={passwordGuru} onChange={(e) => setPasswordGuru(e.target.value)} />
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Password</label>
+                  <input required type="text" className="w-full p-2.5 border rounded-lg focus:border-indigo-500 outline-none text-sm bg-gray-50" value={passwordGuru} onChange={(e) => setPasswordGuru(e.target.value)} placeholder="Minimal 6 karakter"/>
                 </div>
-                <button type="submit" className={`md:col-span-2 mt-2 text-white font-bold py-3 rounded-lg shadow-sm transition-colors ${isEditingGuru ? 'bg-yellow-500 hover:bg-yellow-600 text-yellow-900' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
-                  {isEditingGuru ? 'SIMPAN PERUBAHAN' : 'BUAT AKUN GURU'}
-                </button>
+                <div className="md:col-span-2 flex justify-end mt-2">
+                  <button type="submit" className="px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors w-full md:w-auto">{isEditingGuru ? 'Update Akun Guru' : 'Buat Akun Guru'}</button>
+                </div>
               </form>
             </div>
-            
-            <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border overflow-x-auto">
-              <h2 className="text-lg font-bold text-gray-800 mb-4">Daftar Akun Guru / Pengawas ({teachers.length})</h2>
-              <table className="w-full text-left border-collapse text-sm">
-                <thead><tr className="bg-gray-50 border-y">
-                  <th className="p-3">Nama Lengkap</th><th className="p-3">Mata Pelajaran</th><th className="p-3">Username</th><th className="p-3 text-right">Aksi</th>
-                </tr></thead>
-                <tbody className="divide-y divide-gray-100">
-                  {teachers.map(t => (
-                    <tr key={t.id} className="hover:bg-gray-50">
-                      <td className="p-3 font-bold text-gray-800">{t.name} {t.role === 'admin' && <span className="ml-2 text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full uppercase">Admin</span>}</td>
-                      <td className="p-3 text-gray-600 font-medium">{t.kelas || '-'}</td>
-                      <td className="p-3 font-mono text-indigo-600 text-xs">{t.username}</td>
-                      <td className="p-3 text-right whitespace-nowrap">
-                        {t.role !== 'admin' && (
-                          <>
-                            <button onClick={() => handleEditGuruClick(t)} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded mr-1"><Edit size={16}/></button>
-                            <button onClick={() => hapusUser(t.id, 'Guru')} className="p-1.5 text-red-600 hover:bg-red-100 rounded"><Trash2 size={16}/></button>
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                  {teachers.length === 0 && (<tr><td colSpan="4" className="p-6 text-center text-gray-500">Belum ada akun guru.</td></tr>)}
-                </tbody>
-              </table>
+
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
+              <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-3">Daftar Akun Guru</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm whitespace-nowrap">
+                  <thead className="bg-gray-50 text-gray-600 font-bold uppercase text-xs">
+                    <tr><th className="p-3">Nama Guru</th><th className="p-3">Mata Pelajaran</th><th className="p-3">Username</th><th className="p-3">Hak Akses</th><th className="p-3 text-right">Aksi</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {teachers.map(g => (
+                      <tr key={g.id} className="hover:bg-gray-50">
+                        <td className="p-3 font-semibold text-gray-800">{g.name}</td>
+                        <td className="p-3 text-gray-600">{g.kelas || '-'}</td>
+                        <td className="p-3 font-mono text-xs">{g.username}</td>
+                        <td className="p-3">
+                          <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase ${g.role === 'admin' ? 'bg-purple-100 text-purple-700 border border-purple-200' : 'bg-blue-100 text-blue-700 border border-blue-200'}`}>{g.role}</span>
+                        </td>
+                        <td className="p-3 flex justify-end gap-2">
+                          <button onClick={() => handleEditGuruClick(g)} className="p-1.5 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"><Edit size={14}/></button>
+                          {g.role !== 'admin' && <button onClick={() => hapusUser(g.id, 'Guru')} className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100"><Trash2 size={14}/></button>}
+                        </td>
+                      </tr>
+                    ))}
+                    {teachers.length === 0 && <tr><td colSpan="5" className="p-6 text-center text-gray-400 font-medium">Data guru kosong.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
-
       </div>
     </div>
   );
